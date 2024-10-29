@@ -1,0 +1,24 @@
+name: 'Test PR'
+on:
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: 'Build and Test Project'
+    runs-on: [self-hosted, linux, normal]
+    steps:
+      - name: 'Check out code'
+        uses: actions/checkout@v4
+      - name: 'Set up Docker'
+        uses: ./.github/actions/with-docker
+        with:
+          container-name: kframework-rs-${{ github.sha }}
+      - name: 'Build and test'
+        run: docker exec -u user kframework-rs-${GITHUB_SHA} make
+      - name: 'Tear down Docker'
+        if: always()
+        run: |
+          docker stop --time=0 kframework-rs-${GITHUB_SHA}
