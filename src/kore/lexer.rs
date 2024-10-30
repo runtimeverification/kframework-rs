@@ -456,3 +456,95 @@ impl<'a> Iterator for KoreLexer<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{KoreLexer, Token, TokenType};
+
+    macro_rules! lexer_tests {
+        ($($name:ident: $value:expr,)*) => {
+        $(
+            #[test]
+            fn $name() {
+                // Given
+                let (text, expected) = $value;
+                let lexer = KoreLexer::new(text);
+
+                // When
+                let actual: Vec<_> = lexer.into_iter().collect();
+
+                // Then
+                assert_eq!(expected, actual);
+            }
+        )*
+        }
+    }
+
+    lexer_tests! {
+        test_lexer_00: ("", Vec::<Token>::new()),
+        test_lexer_01: (" ", Vec::<Token>::new()),
+        test_lexer_02: ("\n", Vec::<Token>::new()),
+        test_lexer_03: ("\r", Vec::<Token>::new()),
+        test_lexer_04: ("\t", Vec::<Token>::new()),
+        test_lexer_05: ("\x0c", Vec::<Token>::new()),
+        test_lexer_06: ("//", Vec::<Token>::new()),
+        test_lexer_07: ("/* foo */", Vec::<Token>::new()),
+        test_lexer_08: (",", vec![Token { ty: TokenType::Comma, text: ",", offset: 0 }]),
+        test_lexer_09: (":", vec![Token { ty: TokenType::Colon, text: ":", offset: 0 }]),
+        test_lexer_10: (":=", vec![Token { ty: TokenType::Walrus, text: ":=", offset: 0 }]),
+        test_lexer_11: ("(", vec![Token { ty: TokenType::LParen, text: "(", offset: 0 }]),
+        test_lexer_12: (")", vec![Token { ty: TokenType::RParen, text: ")", offset: 0 }]),
+        test_lexer_13: ("{", vec![Token { ty: TokenType::LBrace, text: "{", offset: 0 }]),
+        test_lexer_14: ("}", vec![Token { ty: TokenType::RBrace, text: "}", offset: 0 }]),
+        test_lexer_15: ("[", vec![Token { ty: TokenType::LBrack, text: "[", offset: 0 }]),
+        test_lexer_16: ("]", vec![Token { ty: TokenType::RBrack, text: "]", offset: 0 }]),
+        test_lexer_17: (r#""foo\"bar\\baz""#, vec![Token { ty: TokenType::Str, text: r#""foo\"bar\\baz""#, offset: 0 }]),
+        test_lexer_18: ("foo", vec![Token { ty: TokenType::Id, text: r"foo", offset: 0 }]),
+        test_lexer_19: (r"\foo", vec![Token { ty: TokenType::SymbolId, text: r"\foo", offset: 0 }]),
+        test_lexer_20: ("@foo", vec![Token { ty: TokenType::SetVarId, text: "@foo", offset: 0 }]),
+        test_lexer_21: (r"\top", vec![Token { ty: TokenType::MlTop, text: r"\top", offset: 0 }]),
+        test_lexer_22: (r"\bottom", vec![Token { ty: TokenType::MlBottom, text: r"\bottom", offset: 0 }]),
+        test_lexer_23: (r"\and", vec![Token { ty: TokenType::MlAnd, text: r"\and", offset: 0 }]),
+        test_lexer_24: (r"\or", vec![Token { ty: TokenType::MlOr, text: r"\or", offset: 0 }]),
+        test_lexer_25: (r"\implies", vec![Token { ty: TokenType::MlImplies, text: r"\implies", offset: 0 }]),
+        test_lexer_26: (r"\iff", vec![Token { ty: TokenType::MlIff, text: r"\iff", offset: 0 }]),
+        test_lexer_27: (r"\exists", vec![Token { ty: TokenType::MlExists, text: r"\exists", offset: 0 }]),
+        test_lexer_28: (r"\forall", vec![Token { ty: TokenType::MlForall, text: r"\forall", offset: 0 }]),
+        test_lexer_29: (r"\mu", vec![Token { ty: TokenType::MlMu, text: r"\mu", offset: 0 }]),
+        test_lexer_30: (r"\nu", vec![Token { ty: TokenType::MlNu, text: r"\nu", offset: 0 }]),
+        test_lexer_31: (r"\ceil", vec![Token { ty: TokenType::MlCeil, text: r"\ceil", offset: 0 }]),
+        test_lexer_32: (r"\floor", vec![Token { ty: TokenType::MlFloor, text: r"\floor", offset: 0 }]),
+        test_lexer_33: (r"\equals", vec![Token { ty: TokenType::MlEquals, text: r"\equals", offset: 0 }]),
+        test_lexer_34: (r"\in", vec![Token { ty: TokenType::MlIn, text: r"\in", offset: 0 }]),
+        test_lexer_35: (r"\next", vec![Token { ty: TokenType::MlNext, text: r"\next", offset: 0 }]),
+        test_lexer_36: (r"\rewrites", vec![Token { ty: TokenType::MlRewrites, text: r"\rewrites", offset: 0 }]),
+        test_lexer_37: (r"\dv", vec![Token { ty: TokenType::MlDv, text: r"\dv", offset: 0 }]),
+        test_lexer_38: (r"\left-assoc", vec![Token { ty: TokenType::MlLeftAssoc, text: r"\left-assoc", offset: 0 }]),
+        test_lexer_39: (r"\right-assoc", vec![Token { ty: TokenType::MlRightAssoc, text: r"\right-assoc", offset: 0 }]),
+        test_lexer_40: (r"module", vec![Token { ty: TokenType::KwModule, text: r"module", offset: 0 }]),
+        test_lexer_41: (r"endmodule", vec![Token { ty: TokenType::KwEndmodule, text: r"endmodule", offset: 0 }]),
+        test_lexer_42: (r"import", vec![Token { ty: TokenType::KwImport, text: r"import", offset: 0 }]),
+        test_lexer_43: (r"sort", vec![Token { ty: TokenType::KwSort, text: r"sort", offset: 0 }]),
+        test_lexer_44: (r"hooked-sort", vec![Token { ty: TokenType::KwHookedSort, text: r"hooked-sort", offset: 0 }]),
+        test_lexer_45: (r"symbol", vec![Token { ty: TokenType::KwSymbol, text: r"symbol", offset: 0 }]),
+        test_lexer_46: (r"hooked-symbol", vec![Token { ty: TokenType::KwHookedSymbol, text: r"hooked-symbol", offset: 0 }]),
+        test_lexer_47: (r"axiom", vec![Token { ty: TokenType::KwAxiom, text: r"axiom", offset: 0 }]),
+        test_lexer_48: (r"claim", vec![Token { ty: TokenType::KwClaim, text: r"claim", offset: 0 }]),
+        test_lexer_49: (r"alias", vec![Token { ty: TokenType::KwAlias, text: r"alias", offset: 0 }]),
+        test_lexer_50: (r"where", vec![Token { ty: TokenType::KwWhere, text: r"where", offset: 0 }]),
+        test_lexer_51: (
+            r#"\dv{SortInt{}}("0")"#,
+            vec![
+                Token { ty: TokenType::MlDv, text: r"\dv", offset: 0 },
+                Token { ty: TokenType::LBrace, text: "{", offset: 3 },
+                Token { ty: TokenType::Id, text: "SortInt", offset: 4 },
+                Token { ty: TokenType::LBrace, text: "{", offset: 11 },
+                Token { ty: TokenType::RBrace, text: "}", offset: 12 },
+                Token { ty: TokenType::RBrace, text: "}", offset: 13 },
+                Token { ty: TokenType::LParen, text: "(", offset: 14 },
+                Token { ty: TokenType::Str, text: r#""0""#, offset: 15 },
+                Token { ty: TokenType::RParen, text: ")", offset: 18 },
+            ],
+        ),
+    }
+}

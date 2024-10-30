@@ -393,3 +393,49 @@ pub enum Pattern {
         right: Box<Pattern>,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Str;
+
+    macro_rules! str_tests {
+        ($($name:ident: $value:expr,)*) => {
+        $(
+            #[test]
+            fn $name() -> Result<(), String> {
+                // Given
+                let (input, expected) = $value;
+
+                // When
+                let actual = Str::from_kore(input)?.0;
+
+                // Then
+                assert_eq!(expected, actual);
+                Ok(())
+            }
+        )*
+        }
+    }
+
+    str_tests! {
+        test_str_00: ("", ""),
+        test_str_01: (" ", " "),
+        test_str_02: ("foo", "foo"),
+        test_str_03: (r"\f", "\x0c"),
+        test_str_04: (r"\n", "\n"),
+        test_str_05: (r"\r", "\r"),
+        test_str_06: (r"\t", "\t"),
+        test_str_07: (r"\\", "\\"),
+        test_str_08: (r#"\""#, "\""),
+        test_str_09: (r#"\""#, "\""),
+        test_str_10: (r"\x80", "\u{80}"),
+        test_str_11: (r"\x0f", "\u{f}"),
+        test_str_12: (r"\x0F", "\u{f}"),
+        test_str_13: (r"\u03b1", "\u{3b1}"),
+        test_str_14: (r"\u03B1", "\u{3b1}"),
+        test_str_15: (r"\U0001f642", "\u{1f642}"),
+        test_str_16: (r"\U0001F642", "\u{1f642}"),
+        test_str_17: (r"\x80\x80", "\u{80}\u{80}"),
+        test_str_18: (r"a\u03b1\x80\U0001f642b", "a\u{3b1}\u{80}\u{1f642}b"),
+    }
+}
