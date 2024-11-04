@@ -1,6 +1,8 @@
 mod lexer;
 mod parser;
+mod serialize;
 mod syntax;
+mod visitor;
 
 pub use parser::Parser;
 pub use syntax::{
