@@ -1,3 +1,4 @@
+mod deserialize;
 mod lexer;
 mod parser;
 mod serialize;
