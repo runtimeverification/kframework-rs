@@ -3,14 +3,14 @@ use super::{
     App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var,
 };
 
-pub struct KoreParser<'a> {
+pub struct Parser<'a> {
     #[allow(dead_code)]
     text: &'a str,
     lexer: KoreLexer<'a>,
     la: Token<'a>,
 }
 
-impl<'a> KoreParser<'a> {
+impl<'a> Parser<'a> {
     pub fn new(text: &'a str) -> Result<Self, String> {
         // TODO KoreParserError
         let mut lexer = KoreLexer::new(text);

@@ -1,5 +1,5 @@
 use kframework::kore::{
-    App, Definition, Id, KoreParser, Module, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
+    App, Definition, Id, Module, Parser, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
 
 fn id<T: Into<String>>(s: T) -> Result<Id, String> {
@@ -21,7 +21,7 @@ macro_rules! sort_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = KoreParser::new(text)?;
+            let mut parser = Parser::new(text)?;
 
             // When
             let actual = parser.sort()?;
@@ -56,7 +56,7 @@ macro_rules! pattern_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = KoreParser::new(text).unwrap();
+            let mut parser = Parser::new(text).unwrap();
 
             // When
             let actual = parser.pattern().unwrap();
@@ -321,7 +321,7 @@ macro_rules! sentence_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = KoreParser::new(text)?;
+            let mut parser = Parser::new(text)?;
 
             // When
             let actual = parser.sentence()?;
@@ -472,7 +472,7 @@ fn test_definition() -> Result<(), String> {
             },
         ],
     };
-    let mut parser = KoreParser::new(text)?;
+    let mut parser = Parser::new(text)?;
 
     // When
     let actual = parser.definition()?;
