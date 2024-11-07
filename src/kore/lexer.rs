@@ -67,14 +67,14 @@ impl<'a> Token<'a> {
 }
 
 #[derive(Debug)]
-pub struct KoreLexer<'a> {
+pub struct Lexer<'a> {
     text: &'a str,
     it: Chars<'a>,
     la: Option<char>,
     offset: usize,
 }
 
-impl<'a> KoreLexer<'a> {
+impl<'a> Lexer<'a> {
     pub fn new(text: &'a str) -> Self {
         let mut it = text.chars();
         let la = it.next();
@@ -439,7 +439,7 @@ impl<'a> KoreLexer<'a> {
     }
 }
 
-impl<'a> Iterator for KoreLexer<'a> {
+impl<'a> Iterator for Lexer<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Token<'a>> {
@@ -455,7 +455,7 @@ impl<'a> Iterator for KoreLexer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{KoreLexer, Token, TokenType};
+    use super::{Lexer, Token, TokenType};
 
     macro_rules! lexer_tests {
         ($($name:ident: $value:expr,)*) => {
@@ -464,7 +464,7 @@ mod tests {
             fn $name() {
                 // Given
                 let (text, expected) = $value;
-                let lexer = KoreLexer::new(text);
+                let lexer = Lexer::new(text);
 
                 // When
                 let actual: Vec<_> = lexer.into_iter().collect();
