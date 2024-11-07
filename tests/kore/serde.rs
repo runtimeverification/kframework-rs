@@ -1,25 +1,50 @@
-use indoc::indoc;
-use serde_json;
-
-use kframework::kore::Parser;
-
 macro_rules! sort_tests {
     ($($name:ident: $value:expr,)*) => {
-    $(
-        #[test]
-        fn $name() -> Result<(), String> {
-            // Given
-            let (text, json) = $value;
-            let expected = Parser::new(text)?.sort()?;
+        mod ser_sort {
+            use indoc::indoc;
+            use serde_json;
 
-            // When
-            let actual = serde_json::from_str(json).map_err(|e| e.to_string())?;
+            use kframework::kore::Parser;
 
-            // Then
-            assert_eq!(expected, actual);
-            Ok(())
+        $(
+            #[test]
+            fn $name() -> Result<(), String> {
+                // Given
+                let (text, expected) = $value;
+                let sort = Parser::new(text)?.sort()?;
+
+                // When
+                let actual = serde_json::to_string_pretty(&sort).map_err(|e| e.to_string())?;
+
+                // Then
+                assert_eq!(expected, actual);
+                Ok(())
+            }
+        )*
         }
-    )*
+
+        mod de_sort {
+            use indoc::indoc;
+            use serde_json;
+
+            use kframework::kore::Parser;
+
+        $(
+            #[test]
+            fn $name() -> Result<(), String> {
+                // Given
+                let (text, json) = $value;
+                let expected = Parser::new(text)?.sort()?;
+
+                // When
+                let actual = serde_json::from_str(json).map_err(|e| e.to_string())?;
+
+                // Then
+                assert_eq!(expected, actual);
+                Ok(())
+            }
+        )*
+        }
     }
 }
 
@@ -52,21 +77,50 @@ sort_tests! {
 
 macro_rules! pattern_tests {
     ($($name:ident: $value:expr,)*) => {
-    $(
-        #[test]
-        fn $name() -> Result<(), String> {
-            // Given
-            let (text, json) = $value;
-            let expected = Parser::new(text)?.pattern()?;
+        mod ser_pattern {
+            use indoc::indoc;
+            use serde_json;
 
-            // When
-            let actual = serde_json::from_str(json).map_err(|e| e.to_string())?;
+            use kframework::kore::Parser;
 
-            // Then
-            assert_eq!(expected, actual);
-            Ok(())
+        $(
+            #[test]
+            fn $name() -> Result<(), String> {
+                // Given
+                let (text, expected) = $value;
+                let sort = Parser::new(text)?.pattern()?;
+
+                // When
+                let actual = serde_json::to_string_pretty(&sort).map_err(|e| e.to_string())?;
+
+                // Then
+                assert_eq!(expected, actual);
+                Ok(())
+            }
+        )*
         }
-    )*
+        mod de_pattern {
+            use indoc::indoc;
+            use serde_json;
+
+            use kframework::kore::Parser;
+
+        $(
+            #[test]
+            fn $name() -> Result<(), String> {
+                // Given
+                let (text, json) = $value;
+                let expected = Parser::new(text)?.pattern()?;
+
+                // When
+                let actual = serde_json::from_str(json).map_err(|e| e.to_string())?;
+
+                // Then
+                assert_eq!(expected, actual);
+                Ok(())
+            }
+        )*
+        }
     }
 }
 

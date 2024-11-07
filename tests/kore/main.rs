@@ -1,3 +1,2 @@
-mod deserialize;
 mod parser;
-mod serialize;
+mod serde;
