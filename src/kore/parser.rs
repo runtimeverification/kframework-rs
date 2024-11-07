@@ -1,5 +1,5 @@
 use super::lexer::{KoreLexer, Token, TokenType};
-use super::syntax::{
+use super::{
     App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var,
 };
 

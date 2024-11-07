@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use kframework::kore::parser::KoreParser;
+use kframework::kore::KoreParser;
 
 #[derive(Parser)]
 /// Parse a .kore file

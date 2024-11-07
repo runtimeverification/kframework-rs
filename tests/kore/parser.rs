@@ -1,6 +1,5 @@
-use kframework::kore::parser::KoreParser;
-use kframework::kore::syntax::{
-    App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
+use kframework::kore::{
+    App, Definition, Id, KoreParser, Module, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
 
 fn id<T: Into<String>>(s: T) -> Result<Id, String> {

@@ -64,10 +64,6 @@ impl<'a> Token<'a> {
     pub fn text(&self) -> &'a str {
         self.text
     }
-
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
 }
 
 #[derive(Debug)]
