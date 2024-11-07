@@ -1,7 +1,7 @@
-use super::super::syntax::{
+use kframework::kore::parser::KoreParser;
+use kframework::kore::syntax::{
     App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
-use super::KoreParser;
 
 fn id<T: Into<String>>(s: T) -> Result<Id, String> {
     Id::new(s.into())

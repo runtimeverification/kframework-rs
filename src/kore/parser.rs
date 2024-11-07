@@ -3,9 +3,6 @@ use super::syntax::{
     App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var,
 };
 
-#[cfg(test)]
-mod tests;
-
 pub struct KoreParser<'a> {
     #[allow(dead_code)]
     text: &'a str,
