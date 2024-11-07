@@ -56,10 +56,10 @@ macro_rules! pattern_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = Parser::new(text).unwrap();
+            let mut parser = Parser::new(text)?;
 
             // When
-            let actual = parser.pattern().unwrap();
+            let actual = parser.pattern()?;
 
             // Then
             assert_eq!(expected, actual);
