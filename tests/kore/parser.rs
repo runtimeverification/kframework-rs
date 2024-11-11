@@ -1,7 +1,6 @@
-use super::super::syntax::{
-    App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
+use kframework::kore::{
+    App, Definition, Id, Module, Parser, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
-use super::KoreParser;
 
 fn id<T: Into<String>>(s: T) -> Result<Id, String> {
     Id::new(s.into())
@@ -22,7 +21,7 @@ macro_rules! sort_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = KoreParser::new(text)?;
+            let mut parser = Parser::new(text)?;
 
             // When
             let actual = parser.sort()?;
@@ -57,10 +56,10 @@ macro_rules! pattern_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = KoreParser::new(text).unwrap();
+            let mut parser = Parser::new(text)?;
 
             // When
-            let actual = parser.pattern().unwrap();
+            let actual = parser.pattern()?;
 
             // Then
             assert_eq!(expected, actual);
@@ -130,21 +129,21 @@ pattern_tests! {
         r"\bottom{S}()",
         Pattern::Bottom(Sort::Var(id("S")?)),
     ),
-    test_dv: (
+    test_pattern_dv: (
         r#"\dv{SortInt{}}("0")"#,
         Pattern::Dv {
             sort: Sort::App { id: id("SortInt")?, args: vec![] },
             value: "0".into(),
         },
     ),
-    test_not: (
+    test_pattern_not: (
         r"\not{S}(X : S)",
         Pattern::Not {
             sort: Sort::Var(id("S")?),
             op: Box::new(Pattern::Var(Var { id: id("X")?, sort: Sort::Var(id("S")?)})),
         },
     ),
-    test_implies: (
+    test_pattern_implies: (
         r"\implies{S}(X : S, Y : S)",
         Pattern::Implies {
             sort: Sort::Var(id("S")?),
@@ -152,7 +151,7 @@ pattern_tests! {
             right: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?)})),
         },
     ),
-    test_iff: (
+    test_pattern_iff: (
         r"\iff{S}(X : S, Y : S)",
         Pattern::Iff {
             sort: Sort::Var(id("S")?),
@@ -160,14 +159,14 @@ pattern_tests! {
             right: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?)})),
         },
     ),
-    test_and_0: (
+    test_pattern_and_0: (
         r"\and{S}()",
         Pattern::And {
             sort: Sort::Var(id("S")?),
             ops: vec![],
         },
     ),
-    test_and_1: (
+    test_pattern_and_1: (
         r"\and{S}(X : S)",
         Pattern::And {
             sort: Sort::Var(id("S")?),
@@ -176,7 +175,7 @@ pattern_tests! {
             ],
         },
     ),
-    test_and_2: (
+    test_pattern_and_2: (
         r"\and{S}(X : S, Y : S)",
         Pattern::And {
             sort: Sort::Var(id("S")?),
@@ -186,7 +185,7 @@ pattern_tests! {
             ],
         },
     ),
-    test_and_3: (
+    test_pattern_and_3: (
         r"\and{S}(X : S, Y : S, Z : S)",
         Pattern::And {
             sort: Sort::Var(id("S")?),
@@ -197,14 +196,14 @@ pattern_tests! {
             ],
         },
     ),
-    test_or_0: (
+    test_pattern_or_0: (
         r"\or{S}()",
         Pattern::Or {
             sort: Sort::Var(id("S")?),
             ops: vec![],
         },
     ),
-    test_or_1: (
+    test_pattern_or_1: (
         r"\or{S}(X : S)",
         Pattern::Or {
             sort: Sort::Var(id("S")?),
@@ -213,7 +212,7 @@ pattern_tests! {
             ],
         },
     ),
-    test_or_2: (
+    test_pattern_or_2: (
         r"\or{S}(X : S, Y : S)",
         Pattern::Or {
             sort: Sort::Var(id("S")?),
@@ -223,7 +222,7 @@ pattern_tests! {
             ],
         },
     ),
-    test_or_3: (
+    test_pattern_or_3: (
         r"\or{S}(X : S, Y : S, Z : S)",
         Pattern::Or {
             sort: Sort::Var(id("S")?),
@@ -234,7 +233,7 @@ pattern_tests! {
             ],
         },
     ),
-    test_exists: (
+    test_pattern_exists: (
         r"\exists{S}(X : S, Y : S)",
         Pattern::Exists {
             sort: Sort::Var(id("S")?),
@@ -242,7 +241,7 @@ pattern_tests! {
             op: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?) })),
         },
     ),
-    test_forall: (
+    test_pattern_forall: (
         r"\forall{S}(X : S, Y : S)",
         Pattern::Forall {
             sort: Sort::Var(id("S")?),
@@ -250,21 +249,21 @@ pattern_tests! {
             op: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?) })),
         },
     ),
-    test_mu: (
+    test_pattern_mu: (
         r"\mu{}(@X : S, Y : S)",
         Pattern::Mu {
             var: SVar { id: svid("@X")?, sort: Sort::Var(id("S")?) },
             op: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?) })),
         }
     ),
-    test_nu: (
+    test_pattern_nu: (
         r"\nu{}(@X : S, Y : S)",
         Pattern::Nu {
             var: SVar { id: svid("@X")?, sort: Sort::Var(id("S")?) },
             op: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?) })),
         }
     ),
-    test_ceil: (
+    test_pattern_ceil: (
         r"\ceil{S, T}(X : S)",
         Pattern::Ceil {
             op_sort: Sort::Var(id("S")?),
@@ -272,7 +271,7 @@ pattern_tests! {
             op: Box::new(Pattern::Var(Var { id: id("X")?, sort: Sort::Var(id("S")?) })),
         }
     ),
-    test_floor: (
+    test_pattern_floor: (
         r"\floor{S, T}(X : S)",
         Pattern::Floor {
             op_sort: Sort::Var(id("S")?),
@@ -280,7 +279,7 @@ pattern_tests! {
             op: Box::new(Pattern::Var(Var { id: id("X")?, sort: Sort::Var(id("S")?) })),
         }
     ),
-    test_equals: (
+    test_pattern_equals: (
         r"\equals{S, T}(X : S, Y : S)",
         Pattern::Equals {
             op_sort: Sort::Var(id("S")?),
@@ -289,7 +288,7 @@ pattern_tests! {
             right: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?) })),
         },
     ),
-    test_in: (
+    test_pattern_in: (
         r"\in{S, T}(X : S, Y : S)",
         Pattern::In {
             op_sort: Sort::Var(id("S")?),
@@ -298,14 +297,14 @@ pattern_tests! {
             right: Box::new(Pattern::Var(Var { id: id("Y")?, sort: Sort::Var(id("S")?) })),
         },
     ),
-    test_next: (
+    test_pattern_next: (
         r"\next{S}(X : S)",
         Pattern::Next {
             sort: Sort::Var(id("S")?),
             op: Box::new(Pattern::Var(Var { id: id("X")?, sort: Sort::Var(id("S")?) })),
         },
     ),
-    test_rewrites: (
+    test_pattern_rewrites: (
         r"\rewrites{S}(X : S, Y : S)",
         Pattern::Rewrites {
             sort: Sort::Var(id("S")?),
@@ -322,7 +321,7 @@ macro_rules! sentence_tests {
         fn $name() -> Result<(), String> {
             // Given
             let (text, expected) = $value;
-            let mut parser = KoreParser::new(text)?;
+            let mut parser = Parser::new(text)?;
 
             // When
             let actual = parser.sentence()?;
@@ -389,7 +388,7 @@ sentence_tests! {
             hooked: true,
         },
     ),
-    test_alias: (
+    test_sentence_alias: (
         r"alias \foo{S}(S) : SortBool{} where \foo{S}(X : S) := X : S []",
         Sentence::Alias {
             id: sym(r"\foo")?,
@@ -407,7 +406,7 @@ sentence_tests! {
             attrs: vec![],
         },
     ),
-    test_axiom: (
+    test_sentence_axiom: (
         "axiom{S} X : S []",
         Sentence::Axiom {
             vars: vec![id("S")?],
@@ -415,7 +414,7 @@ sentence_tests! {
             attrs: vec![],
         },
     ),
-    test_claim: (
+    test_sentence_claim: (
         "claim{S} X : S []",
         Sentence::Claim {
             vars: vec![id("S")?],
@@ -473,7 +472,7 @@ fn test_definition() -> Result<(), String> {
             },
         ],
     };
-    let mut parser = KoreParser::new(text)?;
+    let mut parser = Parser::new(text)?;
 
     // When
     let actual = parser.definition()?;
