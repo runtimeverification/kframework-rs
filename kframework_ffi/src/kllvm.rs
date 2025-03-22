@@ -1,10 +1,14 @@
 use std::ffi::{c_char, c_void};
 
 #[repr(C)]
-pub struct block;
+pub struct block {
+    _private: [u8; 0], // Unused field. Makes rust happy about FFI safety.
+}
 
 #[repr(C)]
-pub struct kore_pattern;
+pub struct kore_pattern {
+    _private: [u8; 0], // Unused field. Makes rust happy about FFI safety.
+}
 
 #[allow(dead_code)]
 unsafe extern "C" {
