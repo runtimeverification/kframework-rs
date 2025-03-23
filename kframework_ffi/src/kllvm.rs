@@ -19,6 +19,7 @@ unsafe extern "C" {
 
     pub fn kore_pattern_parse(data: *const c_char) -> *const kore_pattern;
     pub fn kore_pattern_dump(pattern: *const kore_pattern) -> *const c_char;
+    pub fn kore_pattern_free(pattern: *const kore_pattern) -> c_void;
 
     pub fn kore_pattern_construct(pattern: *const kore_pattern) -> *const block;
     pub fn kore_pattern_from_block(subject: *const block) -> *const kore_pattern;

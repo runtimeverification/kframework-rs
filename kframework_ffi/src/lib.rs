@@ -52,3 +52,9 @@ impl From<KllvmBlock> for KllvmPattern {
         kore_pattern_from_block(&block)
     }
 }
+
+impl Drop for KllvmPattern {
+    fn drop(&mut self) {
+        unsafe { kllvm::kore_pattern_free(self.pattern) };
+    }
+}
