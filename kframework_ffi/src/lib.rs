@@ -41,6 +41,12 @@ pub fn kore_pattern_from_block(subject: &KllvmBlock) -> KllvmPattern {
     KllvmPattern { pattern: pattern }
 }
 
+impl From<KllvmPattern> for String {
+    fn from(pattern: KllvmPattern) -> String {
+        kore_pattern_dump(&pattern)
+    }
+}
+
 impl From<KllvmPattern> for KllvmBlock {
     fn from(pattern: KllvmPattern) -> KllvmBlock {
         kore_pattern_construct(&pattern)
