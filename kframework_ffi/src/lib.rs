@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 mod kllvm;
 
 pub struct KllvmPattern {
@@ -27,7 +27,9 @@ pub fn kore_pattern_parse(data: &str) -> KllvmPattern {
 pub fn kore_pattern_dump(pattern: &KllvmPattern) -> String {
     unsafe {
         let c_str = kllvm::kore_pattern_dump(pattern.pattern);
-        CStr::from_ptr(c_str).to_str().expect("Failed to convert KllvmPattern to &str").to_string()
+        let result = CStr::from_ptr(c_str).to_str().expect("Failed to convert KllvmPattern to &str").to_string();
+        kllvm::free(c_str as *const c_void);
+        result
     }
 }
 

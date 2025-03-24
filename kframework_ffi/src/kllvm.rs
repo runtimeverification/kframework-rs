@@ -12,6 +12,8 @@ pub struct kore_pattern {
 
 #[allow(dead_code)]
 unsafe extern "C" {
+    pub fn free(ptr: *const c_void) -> c_void;
+
     pub fn kllvm_init() -> c_void;
     pub fn kllvm_free_all_memory() -> c_void;
 
