@@ -5,6 +5,10 @@ inputs:
     description: 'Docker container name to use'
     required: true
     type: string
+  dockerfile:
+    description: 'Dockerfile to use'
+    required: true
+    type: string
 runs:
   using: 'composite'
   steps:
@@ -15,7 +19,7 @@ runs:
 
       CONTAINER_NAME=${{ inputs.container-name }}
       TAG=runtimeverificationinc/${CONTAINER_NAME}
-      DOCKERFILE=${{ github.action_path }}/Dockerfile
+      DOCKERFILE=${{ github.action_path }}/${{ inputs.dockerfile }}
 
       docker build .         \
         --file ${DOCKERFILE} \
