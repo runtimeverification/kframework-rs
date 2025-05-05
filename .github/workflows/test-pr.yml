@@ -17,7 +17,6 @@ jobs:
         with:
           container-name: kframework-rs-${{ github.sha }}
           dockerfile: Dockerfile
-          workdir: /home/user
       - name: 'Build and test'
         run: docker exec -u user kframework-rs-${GITHUB_SHA} make
       - name: 'Tear down Docker'
@@ -36,12 +35,12 @@ jobs:
         with:
           container-name: kframework-rs-fuzz-${{ github.sha }}
           dockerfile: Dockerfile.fuzz
-          workdir: /home/user/examples/fuzzer
       - name: 'Build and test'
         run: |
           export HFUZZ_RUN_ARGS="--verbose --logfile log.txt --run_time 60"
           docker exec                                \
             --env HFUZZ_RUN_ARGS="${HFUZZ_RUN_ARGS}" \
+            --workdir /home/user/examples/fuzzer     \
             kframework-rs-fuzz-${GITHUB_SHA}         \
             cargo hfuzz run fuzzer
       - name: 'Tear down Docker'

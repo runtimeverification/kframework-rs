@@ -9,10 +9,6 @@ inputs:
     description: 'Dockerfile to use'
     required: true
     type: string
-  workdir:
-    description: 'Work directory for the container'
-    required: true
-    type: string
 runs:
   using: 'composite'
   steps:
@@ -36,7 +32,7 @@ runs:
 
       CONTAINER_NAME=${{ inputs.container-name }}
       TAG=runtimeverificationinc/${CONTAINER_NAME}
-      WORKDIR=${{ inputs.workdir }}
+      WORKDIR=/home/user
 
       docker run                 \
         --name ${CONTAINER_NAME} \
