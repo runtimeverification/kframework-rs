@@ -43,6 +43,12 @@ jobs:
             --workdir /home/user/examples/fuzzer     \
             kframework-rs-fuzz-${GITHUB_SHA}         \
             cargo hfuzz run fuzzer
+          echo "Final lines of hfuzz output:"
+          docker exec                                \
+            --env HFUZZ_RUN_ARGS="${HFUZZ_RUN_ARGS}" \
+            --workdir /home/user/examples/fuzzer     \
+            kframework-rs-fuzz-${GITHUB_SHA}         \
+            tail log.txt
       - name: 'Tear down Docker'
         if: always()
         run: |
