@@ -1,26 +1,23 @@
 ARG K_VERSION=7.1.241
-ARG RUST_TOOLCHAIN=1.85
+ARG RUST_TOOLCHAIN=1.82.0
 
-# K Image
 FROM runtimeverificationinc/kframework-k:ubuntu-jammy-${K_VERSION} AS semantics
 
-# Build the fuzzing semantics
 WORKDIR /opt/imp-semantics
 COPY examples/fuzzer/k-semantics .
 RUN kompile --llvm-kompile-type c fuzz.k
 
-# Rust Image
 FROM rust:${RUST_TOOLCHAIN}
 
-# Install the kompiled interpreter library
 COPY --from=semantics /opt/imp-semantics/fuzz-kompiled/interpreter.so /usr/lib
-
-# Install honggfuzz
 RUN apt-get update && apt-get install --yes build-essential binutils-dev libunwind-dev libblocksruntime-dev liblzma-dev
 RUN cargo install honggfuzz
 
-# Build the fuzzing target
-WORKDIR /opt/kframework-rs
-COPY . .
-WORKDIR /opt/kframework-rs/examples/fuzzer
-RUN cargo hfuzz build
+ARG USER=user
+ARG GROUP=$USER
+ARG USER_ID=1000
+ARG GROUP_ID=$USER_ID
+
+RUN groupadd -g $GROUP_ID $GROUP && useradd -m -u $USER_ID -s /bin/sh -g $GROUP $USER
+
+USER $USER:$GROUP
