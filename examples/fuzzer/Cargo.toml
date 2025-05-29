@@ -1,0 +1,10 @@
+[package]
+name = "fuzzer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arbitrary = "1.4.1"
+honggfuzz = "0.5.57"
+kframework = { path = "../.." }
+kframework_ffi = { path = "../../kframework_ffi" }
