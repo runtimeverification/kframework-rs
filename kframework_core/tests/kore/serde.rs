@@ -4,7 +4,7 @@ macro_rules! sort_tests {
             use indoc::indoc;
             use serde_json;
 
-            use kframework::kore::Parser;
+            use kframework_core::kore::Parser;
 
         $(
             #[test]
@@ -27,7 +27,7 @@ macro_rules! sort_tests {
             use indoc::indoc;
             use serde_json;
 
-            use kframework::kore::Parser;
+            use kframework_core::kore::Parser;
 
         $(
             #[test]
@@ -81,7 +81,7 @@ macro_rules! pattern_tests {
             use indoc::indoc;
             use serde_json;
 
-            use kframework::kore::Parser;
+            use kframework_core::kore::Parser;
 
         $(
             #[test]
@@ -103,7 +103,7 @@ macro_rules! pattern_tests {
             use indoc::indoc;
             use serde_json;
 
-            use kframework::kore::Parser;
+            use kframework_core::kore::Parser;
 
         $(
             #[test]

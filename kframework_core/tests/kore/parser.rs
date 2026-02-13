@@ -1,4 +1,4 @@
-use kframework::kore::{
+use kframework_core::kore::{
     App, Definition, Id, Module, Parser, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
 
