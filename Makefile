@@ -18,8 +18,15 @@ check-fmt:
 check-clippy:
 	cargo clippy -- --deny warnings
 
+.PHONY: check-test
+check-test: check-clippy-test
+
+.PHONY: check-clippy-test
+check-clippy-test:
+	cargo clippy --tests -- --deny warnings
+
 .PHONY: test
-test:
+test: check-test
 	cargo test
 
 .PHONY: format
