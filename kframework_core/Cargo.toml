@@ -1,0 +1,12 @@
+[package]
+name = "kframework_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+indoc = { workspace = true }
