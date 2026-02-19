@@ -1,26 +1,33 @@
+use crate::error::KError::{self, KoreParseError};
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Id(pub(crate) String);
 
 impl Id {
-    pub fn new(s: String) -> Result<Self, String> {
+    pub fn new(s: String) -> Result<Self, KError> {
         let mut first_checked = false;
         for c in s.chars() {
             if !first_checked {
                 if !c.is_ascii_alphabetic() {
-                    return Err(format!("Expected alphabetic character, got: {:?}", c));
+                    return Err(KoreParseError(format!(
+                        "Expected alphabetic character, got: {:?}",
+                        c
+                    )));
                 }
                 first_checked = true;
             } else if !c.is_ascii_alphanumeric() && c != '\'' && c != '-' {
-                return Err(format!(
+                return Err(KoreParseError(format!(
                     "Expected alphanumeric character, '\'' or '-', got: {:?}",
                     c
-                ));
+                )));
             }
         }
         if first_checked {
             Ok(Id(s))
         } else {
-            Err(String::from("Invalid identifier: empty string"))
+            Err(KoreParseError(String::from(
+                "Invalid identifier: empty string",
+            )))
         }
     }
 
@@ -30,9 +37,9 @@ impl Id {
 }
 
 impl TryFrom<String> for Id {
-    type Error = String;
+    type Error = KError;
 
-    fn try_from(s: String) -> Result<Self, String> {
+    fn try_from(s: String) -> Result<Self, KError> {
         Id::new(s)
     }
 }
@@ -41,7 +48,7 @@ impl TryFrom<String> for Id {
 pub struct SymbolId(pub(crate) String);
 
 impl SymbolId {
-    pub fn new(s: String) -> Result<Self, String> {
+    pub fn new(s: String) -> Result<Self, KError> {
         enum State {
             First,
             Second,
@@ -56,30 +63,33 @@ impl SymbolId {
                     } else if c.is_ascii_alphabetic() {
                         state = State::Rest;
                     } else {
-                        return Err(format!(
+                        return Err(KoreParseError(format!(
                             "Expected alphabetic character or '\\', got: {:?}",
                             c
-                        ));
+                        )));
                     }
                 }
                 State::Second => {
                     if !c.is_ascii_alphabetic() {
-                        return Err(format!("Expected alphabetic character, got: {:?}", c));
+                        return Err(KoreParseError(format!(
+                            "Expected alphabetic character, got: {:?}",
+                            c
+                        )));
                     }
                     state = State::Rest;
                 }
                 State::Rest => {
                     if !c.is_ascii_alphanumeric() && c != '\'' && c != '-' {
-                        return Err(format!(
+                        return Err(KoreParseError(format!(
                             "Expected alphanumeric character, '\'' or '-', got: {:?}",
                             c
-                        ));
+                        )));
                     }
                 }
             }
         }
         match state {
-            State::First | State::Second => Err(format!("Invalid symbol: {:?}", s)),
+            State::First | State::Second => Err(KoreParseError(format!("Invalid symbol: {:?}", s))),
             State::Rest => Ok(SymbolId(s)),
         }
     }
@@ -90,9 +100,9 @@ impl SymbolId {
 }
 
 impl TryFrom<String> for SymbolId {
-    type Error = String;
+    type Error = KError;
 
-    fn try_from(s: String) -> Result<Self, String> {
+    fn try_from(s: String) -> Result<Self, KError> {
         SymbolId::new(s)
     }
 }
@@ -101,7 +111,7 @@ impl TryFrom<String> for SymbolId {
 pub struct SetVarId(pub(crate) String);
 
 impl SetVarId {
-    pub fn new(s: String) -> Result<Self, String> {
+    pub fn new(s: String) -> Result<Self, KError> {
         enum State {
             First,
             Second,
@@ -112,28 +122,33 @@ impl SetVarId {
             match state {
                 State::First => {
                     if c != '@' {
-                        return Err(format!("Expected '@', got: {:?}", c));
+                        return Err(KoreParseError(format!("Expected '@', got: {:?}", c)));
                     }
                     state = State::Second;
                 }
                 State::Second => {
                     if !c.is_ascii_alphabetic() {
-                        return Err(format!("Expected alphabetic character, got: {:?}", c));
+                        return Err(KoreParseError(format!(
+                            "Expected alphabetic character, got: {:?}",
+                            c
+                        )));
                     }
                     state = State::Rest;
                 }
                 State::Rest => {
                     if !c.is_ascii_alphanumeric() && c != '\'' && c != '-' {
-                        return Err(format!(
+                        return Err(KoreParseError(format!(
                             "Expected alphanumeric character, '\'' or '-', got: {:?}",
                             c
-                        ));
+                        )));
                     }
                 }
             }
         }
         match state {
-            State::First | State::Second => Err(format!("Invalid set variable: {:?}", s)),
+            State::First | State::Second => {
+                Err(KoreParseError(format!("Invalid set variable: {:?}", s)))
+            }
             State::Rest => Ok(SetVarId(s)),
         }
     }
@@ -144,9 +159,9 @@ impl SetVarId {
 }
 
 impl TryFrom<String> for SetVarId {
-    type Error = String;
+    type Error = KError;
 
-    fn try_from(s: String) -> Result<Self, String> {
+    fn try_from(s: String) -> Result<Self, KError> {
         SetVarId::new(s)
     }
 }
@@ -155,7 +170,7 @@ impl TryFrom<String> for SetVarId {
 pub struct Str(pub String);
 
 impl Str {
-    pub fn from_kore(s: &str) -> Result<Self, String> {
+    pub fn from_kore(s: &str) -> Result<Self, KError> {
         let mut chars: Vec<char> = Vec::new();
 
         enum State {
@@ -196,19 +211,27 @@ impl Str {
                         'x' => 2,
                         'u' => 4,
                         'U' => 8,
-                        _ => return Err(format!("Unexpected escape sequence: \\{}", c)),
+                        _ => {
+                            return Err(KoreParseError(format!(
+                                "Unexpected escape sequence: \\{}",
+                                c
+                            )))
+                        }
                     };
                     state = State::CodePoint;
                 }
                 State::CodePoint => {
                     let Some(digit) = c.to_digit(16) else {
-                        return Err(format!("Invalid hex digit: {:?}", c));
+                        return Err(KoreParseError(format!("Invalid hex digit: {:?}", c)));
                     };
                     acc = 16 * acc + digit;
                     cnt -= 1;
                     if cnt == 0 {
                         let Some(encoded) = char::from_u32(acc) else {
-                            return Err(format!("Invalid unicode code point: {:x}", acc));
+                            return Err(KoreParseError(format!(
+                                "Invalid unicode code point: {:x}",
+                                acc
+                            )));
                         };
                         chars.push(encoded);
                         acc = 0;

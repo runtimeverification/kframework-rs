@@ -1,3 +1,4 @@
+use crate::error::KError::{self, KoreLexerError};
 use std::str::Chars;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -86,8 +87,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn next_token(&mut self) -> Result<Token<'a>, String> {
-        // TODO KoreLexerError
+    pub fn next_token(&mut self) -> Result<Token<'a>, KError> {
         let la = loop {
             let Some(la) = self.la else {
                 return Ok(Token {
@@ -119,7 +119,7 @@ impl<'a> Lexer<'a> {
             '[' => self.lbrack(),
             ']' => self.rbrack(),
             // Error
-            _ => return Err(format!("Unexpected character: {:?}", la)),
+            _ => return Err(KoreLexerError(format!("Unexpected character: {:?}", la))),
         };
         debug_assert!(token.text == &self.text[token.offset..token.offset + token.text.len()]);
         Ok(token)
@@ -138,7 +138,7 @@ impl<'a> Lexer<'a> {
         Token { ty, text, offset }
     }
 
-    fn string(&mut self) -> Result<Token<'a>, String> {
+    fn string(&mut self) -> Result<Token<'a>, KError> {
         debug_assert!(self.la == Some('"'));
         let offset = self.offset;
         let mut len: usize = 1;
@@ -199,7 +199,7 @@ impl<'a> Lexer<'a> {
         Token { ty, text, offset }
     }
 
-    fn symbol_or_ml_conn(&mut self) -> Result<Token<'a>, String> {
+    fn symbol_or_ml_conn(&mut self) -> Result<Token<'a>, KError> {
         debug_assert!(self.la == Some('\\'));
 
         let offset = self.offset;
@@ -208,7 +208,7 @@ impl<'a> Lexer<'a> {
         self.consume();
         let la = self.la_or_err()?;
         if !la.is_ascii_alphabetic() {
-            return Err(format!("Expected letter, got: {:?}", la));
+            return Err(KoreLexerError(format!("Expected letter, got: {:?}", la)));
         }
 
         self.consume();
@@ -248,7 +248,7 @@ impl<'a> Lexer<'a> {
         Ok(Token { ty, text, offset })
     }
 
-    fn set_var_id(&mut self) -> Result<Token<'a>, String> {
+    fn set_var_id(&mut self) -> Result<Token<'a>, KError> {
         debug_assert!(self.la == Some('@'));
 
         let offset = self.offset;
@@ -258,7 +258,7 @@ impl<'a> Lexer<'a> {
         self.consume();
         let la = self.la_or_err()?;
         if !la.is_ascii_alphabetic() {
-            return Err(format!("Expected letter, got: {:?}", la));
+            return Err(KoreLexerError(format!("Expected letter, got: {:?}", la)));
         }
 
         // TODO consume_while or consume_until
@@ -383,7 +383,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn consume_comment(&mut self) -> Result<(), String> {
+    fn consume_comment(&mut self) -> Result<(), KError> {
         debug_assert!(self.la == Some('/'));
 
         self.consume();
@@ -420,7 +420,10 @@ impl<'a> Lexer<'a> {
                 }
             }
 
-            _ => Err(format!("Expected '/' or '*', got: {:?}", la)),
+            _ => Err(KoreLexerError(format!(
+                "Expected '/' or '*', got: {:?}",
+                la
+            ))),
         }
     }
 
@@ -433,9 +436,9 @@ impl<'a> Lexer<'a> {
         res
     }
 
-    fn la_or_err(&self) -> Result<char, String> {
+    fn la_or_err(&self) -> Result<char, KError> {
         self.la
-            .ok_or_else(|| String::from("Unexpected end of file"))
+            .ok_or_else(|| KoreLexerError(String::from("Unexpected end of file")))
     }
 }
 

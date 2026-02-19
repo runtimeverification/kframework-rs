@@ -1,16 +1,17 @@
+use kframework::error::KError;
 use kframework::kore::{
     App, Definition, Id, Module, Parser, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
 
-fn id<T: Into<String>>(s: T) -> Result<Id, String> {
+fn id<T: Into<String>>(s: T) -> Result<Id, KError> {
     Id::new(s.into())
 }
 
-fn sym<T: Into<String>>(s: T) -> Result<SymbolId, String> {
+fn sym<T: Into<String>>(s: T) -> Result<SymbolId, KError> {
     SymbolId::new(s.into())
 }
 
-fn svid<T: Into<String>>(s: T) -> Result<SetVarId, String> {
+fn svid<T: Into<String>>(s: T) -> Result<SetVarId, KError> {
     SetVarId::new(s.into())
 }
 
@@ -18,7 +19,7 @@ macro_rules! sort_tests {
     ($($name:ident: $value:expr,)*) => {
     $(
         #[test]
-        fn $name() -> Result<(), String> {
+        fn $name() -> Result<(), KError> {
             // Given
             let (text, expected) = $value;
             let mut parser = Parser::new(text)?;
@@ -53,7 +54,7 @@ macro_rules! pattern_tests {
     ($($name:ident: $value:expr,)*) => {
     $(
         #[test]
-        fn $name() -> Result<(), String> {
+        fn $name() -> Result<(), KError> {
             // Given
             let (text, expected) = $value;
             let mut parser = Parser::new(text)?;
@@ -318,7 +319,7 @@ macro_rules! sentence_tests {
     ($($name:ident: $value:expr,)*) => {
     $(
         #[test]
-        fn $name() -> Result<(), String> {
+        fn $name() -> Result<(), KError> {
             // Given
             let (text, expected) = $value;
             let mut parser = Parser::new(text)?;
@@ -425,7 +426,7 @@ sentence_tests! {
 }
 
 #[test]
-fn test_definition() -> Result<(), String> {
+fn test_definition() -> Result<(), KError> {
     // Given
     let text = r#"
         [foo{}("bar"), baz{}()]
