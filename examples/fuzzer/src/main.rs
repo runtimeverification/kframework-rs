@@ -2,7 +2,7 @@ use std::panic;
 
 use arbitrary::{Arbitrary, Unstructured};
 use honggfuzz::fuzz;
-use kframework_core::kore::{App, Parser, Pattern, SymbolId};
+use kframework::kore::{App, Parser, Pattern, SymbolId};
 use kframework_ffi::kllvm;
 
 #[derive(Clone, Copy)]

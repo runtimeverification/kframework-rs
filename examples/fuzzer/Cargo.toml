@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 arbitrary = "1.4.1"
 honggfuzz = "0.5.57"
-kframework_core = { path = "../../kframework_core" }
+kframework = { path = "../../kframework" }
 kframework_ffi = { path = "../../kframework_ffi" }

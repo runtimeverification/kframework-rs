@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use kframework_core::kore;
+use kframework::kore;
 
 #[derive(Parser)]
 /// Parse a textual KORE pattern from a file and convert it to JSON

@@ -2,7 +2,7 @@
 resolver = "2"
 
 members = [
-    "kframework_core",
+    "kframework",
     "kframework_ffi",
 ]
 
