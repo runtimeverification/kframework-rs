@@ -28,7 +28,7 @@ impl FromStr for Pattern {
         };
         let pattern = unsafe { ffi::kore_pattern_parse(c_str) };
         let _ = unsafe { CString::from_raw(c_str) }; // Free the CString memory
-        Ok(Self { pattern: pattern })
+        Ok(Self { pattern })
     }
 }
 

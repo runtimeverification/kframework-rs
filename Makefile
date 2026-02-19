@@ -16,7 +16,7 @@ check-fmt:
 
 .PHONY: check-clippy
 check-clippy:
-	cargo clippy -- --deny warnings
+	cargo clippy --all-targets -- --deny warnings
 
 .PHONY: test
 test:
