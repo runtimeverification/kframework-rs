@@ -17,16 +17,10 @@ check-fmt:
 .PHONY: check-clippy
 check-clippy:
 	cargo clippy -- --deny warnings
-
-.PHONY: check-test
-check-test: check-clippy-test
-
-.PHONY: check-clippy-test
-check-clippy-test:
 	cargo clippy --tests -- --deny warnings
 
 .PHONY: test
-test: check-test
+test:
 	cargo test
 
 .PHONY: format
