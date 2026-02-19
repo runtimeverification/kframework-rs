@@ -6,6 +6,10 @@ members = [
     "kframework_ffi",
 ]
 
+exclude = [
+    "examples/fuzzer",
+]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
