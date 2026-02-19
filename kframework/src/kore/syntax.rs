@@ -420,12 +420,13 @@ pub enum Pattern {
 #[cfg(test)]
 mod tests {
     use super::Str;
+    use crate::error::KError;
 
     macro_rules! str_tests {
         ($($name:ident: $value:expr,)*) => {
         $(
             #[test]
-            fn $name() -> Result<(), String> {
+            fn $name() -> Result<(), KError> {
                 // Given
                 let (input, expected) = $value;
 
