@@ -38,6 +38,9 @@ mod kframework_py {
             fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
                 create_sys_module(module, "kframework_py.kore.syntax")
             }
+
+            #[pymodule_export]
+            use kframework::kore::Id;
         }
     }
 }

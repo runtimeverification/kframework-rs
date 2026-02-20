@@ -1,3 +1,4 @@
+#[cfg_attr(feature = "python", pyo3::pyclass)]
 #[derive(Debug, PartialEq, Eq)]
 pub struct Id(pub(crate) String);
 
@@ -24,8 +25,8 @@ impl Id {
         }
     }
 
-    pub fn value(self) -> String {
-        self.0
+    pub fn value(&self) -> &str {
+        &self.0
     }
 }
 
