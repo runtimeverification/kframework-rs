@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+    "bindings/kframework_py",
     "kframework",
     "kframework_ffi",
 ]
