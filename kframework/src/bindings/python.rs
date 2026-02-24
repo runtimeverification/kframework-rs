@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::kore::{Id, Sort};
 use pyo3::{
@@ -25,10 +25,12 @@ impl Id {
 /// A metatada struct for the root node of a Sort
 #[pyclass(unsendable)]
 struct PySortView {
-    root: Box<Sort>,
+    root: Arc<Sort>,
     /// A list of pointers to all sub-trees of the root
-    nodes: Vec<*const Sort>,
-    /// A list of children indices given a node index
+    nodes: Vec<Arc<Sort>>,
+    /// Reverse lookup to a node index from a raw pointer
+    index_of: HashMap<*const Sort, usize>,
+    /// List of child indices given a node index
     children: Vec<Box<[usize]>>,
 }
 
@@ -40,34 +42,35 @@ impl PySortView {
 
 impl Sort {
     fn into_view(self) -> PySortView {
-        let root = Box::new(self);
+        let root = Arc::new(self);
 
         let mut nodes = Vec::new();
-        let mut stack = vec![root.as_ref()];
+        let mut stack = vec![root.clone()];
 
         while let Some(n) = stack.pop() {
-            nodes.push(n as *const Sort);
+            nodes.push(n.clone());
 
-            if let Sort::App { args, .. } = n {
+            if let Sort::App { args, .. } = &*n {
+                let args: Vec<Arc<Sort>> = args.to_vec();
                 stack.extend(args)
             };
         }
 
         let mut index_of = HashMap::new();
 
-        for (i, &ptr) in nodes.iter().enumerate() {
-            index_of.insert(ptr, i);
+        for (i, ptr) in nodes.iter().enumerate() {
+            index_of.insert(Arc::<Sort>::into_raw(ptr.clone()), i);
         }
 
         let mut children: Vec<Box<[usize]>> = Vec::with_capacity(nodes.len());
-        for &p in &nodes {
-            let s = unsafe { &*p };
+        for p in &nodes {
+            let s = &**p;
             let child_idxs = match s {
                 Sort::Var(_) => Vec::new(),
                 Sort::App { args, .. } => args
                     .iter()
                     .map(|c| {
-                        let cp = c as *const Sort;
+                        let cp = Arc::<Sort>::into_raw(c.clone());
                         *index_of.get(&cp).expect("Pointer didn't exist in lookup")
                     })
                     .collect(),
@@ -78,6 +81,7 @@ impl Sort {
         PySortView {
             root,
             nodes,
+            index_of,
             children,
         }
     }

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::lexer::{Lexer, Token, TokenType};
 use super::{
     App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var,
@@ -100,6 +102,7 @@ impl<'a> Parser<'a> {
         let id = self.id()?;
         let sort = if self.la.ty() == TokenType::LBrace {
             let args = self.sorts()?;
+            let args = args.into_iter().map(Arc::new).collect::<Box<_>>();
             Sort::App { id, args }
         } else {
             Sort::Var(id)
