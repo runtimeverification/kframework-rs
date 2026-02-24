@@ -1,5 +1,5 @@
-#[cfg_attr(feature = "python", pyo3::pyclass)]
-#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "python", pyo3::pyclass(from_py_object))]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Id(pub(crate) String);
 
 impl Id {

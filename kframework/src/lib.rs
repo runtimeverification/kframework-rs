@@ -1,4 +1,4 @@
 pub mod kore;
 
-#[cfg(any(feature = "python"))]
+#[cfg(feature = "python")]
 pub mod bindings;
