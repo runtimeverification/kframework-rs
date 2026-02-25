@@ -22,120 +22,109 @@ impl Id {
     }
 }
 
-/// A metatada struct for the root node of a Sort
 #[pyclass(unsendable)]
-struct PySortView {
-    root: Arc<Sort>,
-    /// A list of pointers to all sub-trees of the root
-    nodes: Vec<Arc<Sort>>,
-    /// Reverse lookup to a node index from a raw pointer
+#[derive(Default)]
+pub struct PySortArena {
+    inners: Vec<Arc<Sort>>,
     index_of: HashMap<*const Sort, usize>,
-    /// List of child indices given a node index
     children: Vec<Box<[usize]>>,
+    cache: HashMap<usize, Py<PyAny>>,
 }
 
-impl PySortView {
-    fn get(&self, idx: usize) -> Option<&Sort> {
-        self.nodes.get(idx).map(|p| unsafe { &**p })
+impl PySortArena {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, sort: Arc<Sort>) -> usize {
+        let idx = self.inners.len();
+        self.inners.push(sort.clone());
+        self.index_of
+            .insert(Arc::<Sort>::into_raw(sort.clone()), idx);
+        self.children.push(Box::new([]));
+
+        if let Sort::App { args, .. } = &*sort {
+            let children = args
+                .iter()
+                .map(|arg| self.add(arg.clone()))
+                .collect::<Box<_>>();
+            self.children[idx] = children;
+        }
+
+        idx
     }
 }
 
-impl Sort {
-    fn into_view(self) -> PySortView {
-        let root = Arc::new(self);
+#[pymethods]
+impl PySortArena {
+    fn get<'py>(
+        slf: &Bound<'py, Self>,
+        py: Python<'py>,
+        idx: usize,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let slf_ref = slf.borrow();
 
-        let mut nodes = Vec::new();
-        let mut stack = vec![root.clone()];
-
-        while let Some(n) = stack.pop() {
-            nodes.push(n.clone());
-
-            if let Sort::App { args, .. } = &*n {
-                let args: Vec<Arc<Sort>> = args.to_vec();
-                stack.extend(args)
-            };
+        // Check the cache
+        if let Some(res) = &slf_ref.cache.get(&idx) {
+            return Ok(res.bind(py).clone());
         }
 
-        let mut index_of = HashMap::new();
-
-        for (i, ptr) in nodes.iter().enumerate() {
-            index_of.insert(Arc::<Sort>::into_raw(ptr.clone()), i);
-        }
-
-        let mut children: Vec<Box<[usize]>> = Vec::with_capacity(nodes.len());
-        for p in &nodes {
-            let s = &**p;
-            let child_idxs = match s {
-                Sort::Var(_) => Vec::new(),
-                Sort::App { args, .. } => args
+        // Otherwise create the python object for the node, update the cache
+        // with it (if possible), and return it
+        let sort = slf_ref.inners.get(idx).expect("Invalid node index");
+        let node = PySortNode {
+            inner: slf.clone().unbind(),
+            idx,
+        };
+        let res: Bound<'_, PyAny> = match &**sort {
+            Sort::Var(id) => {
+                let var = SortVar {
+                    name: PyString::new(py, id.value()).unbind(),
+                };
+                Bound::new(py, (var, node))?.into_any()
+            }
+            Sort::App { id, .. } => {
+                let children_idxs = slf_ref.children.get(idx).expect("Invalid node index");
+                let children = children_idxs
                     .iter()
-                    .map(|c| {
-                        let cp = Arc::<Sort>::into_raw(c.clone());
-                        *index_of.get(&cp).expect("Pointer didn't exist in lookup")
-                    })
-                    .collect(),
-            };
-            children.push(child_idxs.into_boxed_slice());
+                    .map(|idx| PySortArena::get(slf, py, *idx))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let app = SortApp {
+                    name: PyString::new(py, id.value()).unbind(),
+                    args: PyTuple::new(py, children)?.into(),
+                };
+                Bound::new(py, (app, node))?.into_any()
+            }
+        };
+
+        drop(slf_ref);
+
+        if let Ok(mut slf_ref_mut) = slf.try_borrow_mut() {
+            slf_ref_mut.cache.insert(idx, res.clone().unbind());
         }
 
-        PySortView {
-            root,
-            nodes,
-            index_of,
-            children,
-        }
+        Ok(res)
     }
 }
 
 #[pyclass(subclass, name = "Sort")]
 pub struct PySortNode {
-    inner: Py<PySortView>,
+    inner: Py<PySortArena>,
     idx: usize,
-}
-
-fn create_node(view: &Bound<'_, PySortView>, idx: usize) -> PyResult<Py<PyAny>> {
-    let py = view.py();
-    let view_ref = view.borrow();
-    let node = view_ref.get(idx).expect("Invalid node index");
-
-    let sort = PySortNode {
-        inner: view.clone().unbind(),
-        idx,
-    };
-    let res: Py<PyAny> = match node {
-        Sort::Var(id) => {
-            let var = SortVar {
-                name: PyString::new(py, id.value()).unbind(),
-            };
-            Py::new(py, (var, sort))?.into()
-        }
-        Sort::App { id, .. } => {
-            let children_idxs = view_ref.children.get(idx).expect("Invalid node index");
-            let children = children_idxs
-                .iter()
-                .map(|idx| create_node(view, *idx))
-                .collect::<PyResult<Vec<Py<PyAny>>>>()?;
-            let app = SortApp {
-                name: PyString::new(py, id.value()).unbind(),
-                args: PyTuple::new(py, children)?.into(),
-            };
-            Py::new(py, (app, sort))?.into()
-        }
-    };
-    Ok(res)
 }
 
 #[pymethods]
 impl PySortNode {
     #[staticmethod]
-    fn parse(py: Python<'_>, s: &str) -> PyResult<Py<Self>> {
+    fn parse(py: Python<'_>, s: &str) -> PyResult<Py<PyAny>> {
         use crate::kore::Parser;
         let sort: Sort = Parser::new(s)
             .and_then(|mut p| p.sort())
             .map_err(PyValueError::new_err)?;
-        let view = Bound::new(py, sort.into_view())?;
-        let res = create_node(&view, 0)?;
-        Ok(res.extract(py)?)
+        let mut arena = PySortArena::new();
+        let idx = arena.add(sort.into());
+        let arena_bound = Bound::new(py, arena)?;
+        PySortArena::get(&arena_bound, py, idx).map(|a| a.into_any().unbind())
     }
 }
 
@@ -147,6 +136,7 @@ pub struct SortVar {
 
 #[pymethods]
 impl SortVar {
+    /*
     #[new]
     fn new_(py: Python<'_>, id: Py<PyAny>) -> PyResult<Py<PyAny>> {
         let view = if let Ok(id) = id.extract::<Id>(py) {
@@ -162,6 +152,7 @@ impl SortVar {
         let view_bound = Bound::new(py, view)?;
         create_node(&view_bound, 0)
     }
+    */
 }
 
 #[pyclass(extends = PySortNode)]
