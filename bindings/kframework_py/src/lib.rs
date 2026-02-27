@@ -53,10 +53,7 @@ mod kframework_py {
             }
 
             #[pymodule_export]
-            use kframework::{
-                bindings::python::{PySort, SortApp, SortVar},
-                kore::Id,
-            };
+            use kframework::bindings::python::{PySort, SortApp, SortVar};
         }
     }
 }

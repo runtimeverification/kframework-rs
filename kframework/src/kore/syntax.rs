@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Id(pub(crate) String);
 
 impl Id {
@@ -301,7 +301,7 @@ pub enum Sentence {
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Sort {
     Var(Id),
     App { id: Id, args: Vec<Sort> },

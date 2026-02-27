@@ -1,15 +1,4 @@
-from kframework_py.kore.syntax import Id, Sort, SortVar, SortApp
-
-def test_id():
-    i = Id("foo")
-
-    a = i.value
-    b = i.value
-
-    assert a == "foo"
-
-    # TODO: Fix this!
-    # assert a is b
+from kframework_py.kore.syntax import Sort, SortVar, SortApp
 
 def test_sort():
     # Parsing
