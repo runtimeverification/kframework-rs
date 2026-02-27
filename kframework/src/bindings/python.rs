@@ -14,10 +14,7 @@ fn sort_to_pysort(py: Python<'_>, sort: &Sort) -> PyResult<Py<PySort>> {
     match sort {
         Sort::Var(id) => {
             let id: &Bound<'_, PyString> = &id.clone().value().into_pyobject(py)?;
-            Ok(SortVar::new_(py, id)?
-                .cast_bound::<PySort>(py)?
-                .clone()
-                .unbind())
+            SortVar::new_(py, id)
         }
         Sort::App { id, args } => {
             let id: &Bound<'_, PyString> = &id.clone().value().into_pyobject(py)?;
@@ -26,10 +23,7 @@ fn sort_to_pysort(py: Python<'_>, sort: &Sort) -> PyResult<Py<PySort>> {
                 .map(|sort| sort_to_pysort(py, sort))
                 .collect::<Result<Vec<_>, _>>()?;
             let args = PyTuple::new(py, children_)?;
-            Ok(SortApp::new_(py, id, &args)?
-                .cast_bound::<PySort>(py)?
-                .clone()
-                .unbind())
+            SortApp::new_(py, id, &args)
         }
     }
 }
@@ -57,7 +51,7 @@ pub struct SortVar {
 #[pymethods]
 impl SortVar {
     #[new]
-    fn new_(py: Python<'_>, id: &Bound<'_, PyString>) -> PyResult<Py<Self>> {
+    fn new_(py: Python<'_>, id: &Bound<'_, PyString>) -> PyResult<Py<PySort>> {
         let id_rust = Id::new(id.to_string()).map_err(PyValueError::new_err)?;
         let sort = Sort::Var(id_rust);
 
@@ -65,15 +59,11 @@ impl SortVar {
             wrapped: sort.into(),
         };
 
-        Py::new(
-            py,
-            (
-                Self {
-                    name: id.clone().unbind(),
-                },
-                super_,
-            ),
-        )
+        let self_ = Self {
+            name: id.clone().unbind(),
+        };
+
+        Ok(Bound::new(py, (self_, super_))?.into_super().unbind())
     }
 
     #[classattr]
@@ -97,9 +87,9 @@ impl SortApp {
     #[new]
     fn new_<'py>(
         py: Python<'py>,
-        id: &Bound<'_, PyString>,
-        args: &Bound<'_, PyTuple>,
-    ) -> PyResult<Py<Self>> {
+        id: &Bound<'py, PyString>,
+        args: &Bound<'py, PyTuple>,
+    ) -> PyResult<Py<PySort>> {
         let id_rust = Id::new(id.to_string()).map_err(PyValueError::new_err)?;
 
         let args_vec: Vec<Sort> = args
@@ -119,16 +109,12 @@ impl SortApp {
             wrapped: sort.into(),
         };
 
-        Py::new(
-            py,
-            (
-                Self {
-                    name: id.clone().unbind(),
-                    args: args.clone().unbind(),
-                },
-                super_,
-            ),
-        )
+        let self_ = Self {
+            name: id.clone().unbind(),
+            args: args.clone().unbind(),
+        };
+
+        Ok(Bound::new(py, (self_, super_))?.into_super().unbind())
     }
 
     #[classattr]
