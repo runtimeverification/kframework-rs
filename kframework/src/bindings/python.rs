@@ -1,15 +1,10 @@
-#![allow(unused)]
-
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::kore::{Id, Sort};
 use pyo3::{
-    exceptions::{PyTypeError, PyValueError},
+    exceptions::PyValueError,
     prelude::*,
-    types::{PyDict, PyList, PyString, PyTuple},
+    types::{PyDict, PyString, PyTuple},
 };
 
 #[pymethods]
@@ -71,11 +66,9 @@ impl PySortArena {
         self.cached_pys.push(None);
 
         if let Sort::App { args, .. } = &*sort {
-            let children = args
-                .iter()
-                // Add this sort's children to the arena as well
-                .map(|arg| self.add(arg.clone()))
-                .collect::<Box<_>>();
+            for arg in args {
+                self.add(arg.clone());
+            }
         }
 
         idx
@@ -207,9 +200,7 @@ impl SortVar {
         let id = Id::try_from(id)?;
         let sort = Sort::Var(id);
 
-        Ok(PySort::create(py, sort.into())?
-            .cast_into::<Self>()?
-            .into())
+        Ok(PySort::create(py, sort.into())?.cast_into::<Self>()?.into())
     }
 
     #[classattr]
@@ -251,9 +242,7 @@ impl SortApp {
             args: args.into(),
         };
 
-        Ok(PySort::create(py, sort.into())?
-            .cast_into::<Self>()?
-            .into())
+        Ok(PySort::create(py, sort.into())?.cast_into::<Self>()?.into())
     }
 
     #[classattr]
