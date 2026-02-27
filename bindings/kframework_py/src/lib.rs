@@ -32,10 +32,7 @@ mod kframework_py {
         #[pymodule]
         mod syntax {
             use crate::create_sys_module;
-            use pyo3::{
-                prelude::*,
-                types::{IntoPyDict, PyDict, PyList, PyString},
-            };
+            use pyo3::{prelude::*, types::IntoPyDict};
 
             #[pymodule_init]
             fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -45,18 +42,9 @@ mod kframework_py {
                 let sortvar = module.getattr("SortVar")?;
                 let sortapp = module.getattr("SortApp")?;
 
-                let stringtype = py.get_type::<PyString>();
-                let listtype = py.get_type::<PyList>();
-
-                let var_annotations = PyDict::new(py);
-                var_annotations.set_item("name", &stringtype)?;
-                sortvar.setattr("__annotations__", var_annotations)?;
-
-                let app_annotations = PyDict::new(py);
-                app_annotations.set_item("name", &stringtype)?;
-                app_annotations.set_item("args", &listtype)?;
-                sortapp.setattr("__annotations__", app_annotations)?;
-
+                // Each python class has the `__annotations__` attribute set.
+                //
+                // This allows us to call the `dataclass` decorator on them.
                 let dataclass = py.import("dataclasses")?.getattr("dataclass")?;
                 let kwargs = Some([("init", false), ("frozen", true)].into_py_dict(py)?);
                 dataclass.call((sortvar,), kwargs.as_ref())?;

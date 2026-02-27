@@ -1,12 +1,15 @@
 #![allow(unused)]
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use crate::kore::{Id, Sort};
 use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     prelude::*,
-    types::{PyString, PyTuple},
+    types::{PyDict, PyList, PyString, PyTuple},
 };
 
 #[pymethods]
@@ -22,13 +25,31 @@ impl Id {
     }
 }
 
-#[pyclass(unsendable)]
+impl TryFrom<&Bound<'_, PyAny>> for Id {
+    type Error = PyErr;
+
+    fn try_from(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(id) = value.extract::<Id>() {
+            return Ok(id);
+        };
+        let id_str = value.cast::<PyString>()?;
+        let id = Id::new(id_str.to_string()).map_err(PyValueError::new_err)?;
+        Ok(id)
+    }
+}
+
+/// [`PySortArena`]
+///
+/// An arena containing pointers to allocated [`Sort`]s, as well as
+/// some metadata about those objects and the arena itself.
+#[pyclass]
 #[derive(Default)]
 pub struct PySortArena {
     inners: Vec<Arc<Sort>>,
-    index_of: HashMap<*const Sort, usize>,
-    children: Vec<Box<[usize]>>,
-    cache: HashMap<usize, Py<PyAny>>,
+    // A mapping of *const Sort (as usize) to indices of already existing members
+    index_of: HashMap<usize, usize>,
+    // The python objects corresponding to the rust types, if they exist
+    cached_pys: Vec<Option<Py<PySort>>>,
 }
 
 impl PySortArena {
@@ -37,98 +58,143 @@ impl PySortArena {
     }
 
     pub fn add(&mut self, sort: Arc<Sort>) -> usize {
+        // Check if this sort has already been added to the arena
+        if let Some(idx) = self.index_of.get(&(Arc::<Sort>::as_ptr(&sort) as usize)) {
+            return *idx;
+        }
+
+        // Otherwise, allocate space for the new sort
         let idx = self.inners.len();
         self.inners.push(sort.clone());
         self.index_of
-            .insert(Arc::<Sort>::into_raw(sort.clone()), idx);
-        self.children.push(Box::new([]));
+            .insert(Arc::<Sort>::as_ptr(&sort) as usize, idx);
+        self.cached_pys.push(None);
 
         if let Sort::App { args, .. } = &*sort {
             let children = args
                 .iter()
+                // Add this sort's children to the arena as well
                 .map(|arg| self.add(arg.clone()))
                 .collect::<Box<_>>();
-            self.children[idx] = children;
         }
 
         idx
     }
+
+    pub fn get(&self, idx: usize) -> Arc<Sort> {
+        self.inners.get(idx).cloned().expect("Invalid node index")
+    }
 }
 
-#[pymethods]
-impl PySortArena {
-    fn get<'py>(
-        slf: &Bound<'py, Self>,
-        py: Python<'py>,
-        idx: usize,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let slf_ref = slf.borrow();
+/// [`PySort`]
+///
+/// The base class for the python Sort types.
+///
+/// This is just a pointer to a [`PySortArena`] and the
+/// index in the arena that represents this object.
+#[pyclass(subclass, name = "Sort")]
+pub struct PySort {
+    inner: Py<PySortArena>,
+    idx: usize,
+}
 
-        // Check the cache
-        if let Some(res) = &slf_ref.cache.get(&idx) {
+impl PySort {
+    fn get_inner(&self, py: Python<'_>) -> Arc<Sort> {
+        let arena = self.inner.bind(py).borrow();
+        arena.get(self.idx)
+    }
+
+    fn get_arena<'py>(py: Python<'py>) -> PyResult<Bound<'py, PySortArena>> {
+        let cls = py.get_type::<PySort>();
+        let arena_attr = cls.getattr("__sort_arena__")?;
+        Ok(arena_attr.cast_into()?)
+    }
+
+    /// Create a [`PySort`] from a [`Sort`]
+    ///
+    /// This relies on the [`PySort::__sort_arena__`] attribute to hold
+    /// all allocations of both the rust types and their python representations.
+    ///
+    /// This also updates the arena's cache with the created object
+    fn create(py: Python<'_>, sort: Arc<Sort>) -> PyResult<Bound<'_, Self>> {
+        let arena_bound = Self::get_arena(py)?;
+
+        let mut arena = arena_bound.borrow_mut();
+        let idx = arena.add(sort.clone());
+
+        // Check the arena's cache
+        if let Some(res) = arena.cached_pys.get(idx).expect("Invalid node index") {
             return Ok(res.bind(py).clone());
         }
 
-        // Otherwise create the python object for the node, update the cache
-        // with it (if possible), and return it
-        let sort = slf_ref.inners.get(idx).expect("Invalid node index");
-        let node = PySortNode {
-            inner: slf.clone().unbind(),
+        // Nested calls to `create` are coming up, so we drop
+        // the mutable borrow of the arena here to ensure interior mutability
+        drop(arena);
+
+        let node = Self {
+            inner: arena_bound.clone().into(),
             idx,
         };
-        let res: Bound<'_, PyAny> = match &**sort {
+
+        let res: Bound<'_, PySort> = match &*sort {
             Sort::Var(id) => {
                 let var = SortVar {
                     name: PyString::new(py, id.value()).unbind(),
                 };
-                Bound::new(py, (var, node))?.into_any()
+                Bound::new(py, (var, node))?.into_super()
             }
-            Sort::App { id, .. } => {
-                let children_idxs = slf_ref.children.get(idx).expect("Invalid node index");
-                let children = children_idxs
+            Sort::App { id, args } => {
+                let children = args
                     .iter()
-                    .map(|idx| PySortArena::get(slf, py, *idx))
+                    .map(|sort| Self::create(py, sort.clone()))
                     .collect::<Result<Vec<_>, _>>()?;
+                let args = PyTuple::new(py, children)?;
                 let app = SortApp {
                     name: PyString::new(py, id.value()).unbind(),
-                    args: PyTuple::new(py, children)?.into(),
+                    args: args.into(),
                 };
-                Bound::new(py, (app, node))?.into_any()
+                Bound::new(py, (app, node))?.into_super()
             }
         };
 
-        drop(slf_ref);
-
-        if let Ok(mut slf_ref_mut) = slf.try_borrow_mut() {
-            slf_ref_mut.cache.insert(idx, res.clone().unbind());
-        }
+        // Update the arena's cache
+        let mut arena_mut = arena_bound.borrow_mut();
+        assert!(arena_mut
+            .cached_pys
+            .get(idx)
+            .expect("Invalid node index")
+            .is_none());
+        arena_mut.cached_pys[idx] = Some(res.clone().unbind());
 
         Ok(res)
     }
 }
 
-#[pyclass(subclass, name = "Sort")]
-pub struct PySortNode {
-    inner: Py<PySortArena>,
-    idx: usize,
-}
-
 #[pymethods]
-impl PySortNode {
+impl PySort {
     #[staticmethod]
-    fn parse(py: Python<'_>, s: &str) -> PyResult<Py<PyAny>> {
+    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, Self>> {
         use crate::kore::Parser;
+
         let sort: Sort = Parser::new(s)
             .and_then(|mut p| p.sort())
             .map_err(PyValueError::new_err)?;
-        let mut arena = PySortArena::new();
-        let idx = arena.add(sort.into());
-        let arena_bound = Bound::new(py, arena)?;
-        PySortArena::get(&arena_bound, py, idx).map(|a| a.into_any().unbind())
+
+        Self::create(py, sort.into())
+    }
+
+    /// [`PySort::__sort_arena__`]
+    ///
+    /// A class variable that holds onto a single persistent [`PySortArena`]
+    /// which holds all allocations of [`Sort`] and their corresponding [`PySort`]
+    /// during the lifetime of a python process
+    #[classattr]
+    fn __sort_arena__(py: Python<'_>) -> PyResult<Bound<'_, PySortArena>> {
+        Bound::new(py, PySortArena::new())
     }
 }
 
-#[pyclass(extends = PySortNode)]
+#[pyclass(extends = PySort)]
 pub struct SortVar {
     #[pyo3(get)]
     name: Py<PyString>,
@@ -136,29 +202,65 @@ pub struct SortVar {
 
 #[pymethods]
 impl SortVar {
-    /*
     #[new]
-    fn new_(py: Python<'_>, id: Py<PyAny>) -> PyResult<Py<PyAny>> {
-        let view = if let Ok(id) = id.extract::<Id>(py) {
-            let sort = Sort::Var(id);
-            Ok(sort.into_view())
-        } else if let Ok(id_str) = id.cast_bound::<PyString>(py) {
-            let id = Id::new(id_str.to_string()).map_err(PyValueError::new_err)?;
-            let sort = Sort::Var(id);
-            Ok(sort.into_view())
-        } else {
-            Err(PyTypeError::new_err(""))
-        }?;
-        let view_bound = Bound::new(py, view)?;
-        create_node(&view_bound, 0)
+    fn new_(py: Python<'_>, id: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+        let id = Id::try_from(id)?;
+        let sort = Sort::Var(id);
+
+        Ok(PySort::create(py, sort.into())?
+            .cast_into::<Self>()?
+            .into())
     }
-    */
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let var_annotations = PyDict::new(py);
+        var_annotations.set_item("name", py.get_type::<PyString>())?;
+        Ok(var_annotations)
+    }
 }
 
-#[pyclass(extends = PySortNode)]
+#[pyclass(extends = PySort)]
 pub struct SortApp {
     #[pyo3(get)]
     name: Py<PyString>,
     #[pyo3(get)]
     args: Py<PyTuple>,
+}
+
+#[pymethods]
+impl SortApp {
+    #[new]
+    fn new_<'py>(
+        py: Python<'py>,
+        id: &Bound<'_, PyAny>,
+        args: &Bound<'_, PyTuple>,
+    ) -> PyResult<Py<PyAny>> {
+        let id = Id::try_from(id)?;
+
+        let args: Vec<Arc<Sort>> = args
+            .iter()
+            .map(|obj| {
+                let node = obj.cast_into::<PySort>();
+                node.map(|arg| arg.borrow().get_inner(py))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let sort = Sort::App {
+            id,
+            args: args.into(),
+        };
+
+        Ok(PySort::create(py, sort.into())?
+            .cast_into::<Self>()?
+            .into())
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let app_annotations = PyDict::new(py);
+        app_annotations.set_item("name", py.get_type::<PyString>())?;
+        app_annotations.set_item("args", py.get_type::<PyTuple>())?;
+        Ok(app_annotations)
+    }
 }
