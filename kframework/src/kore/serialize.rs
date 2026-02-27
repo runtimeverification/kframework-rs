@@ -18,8 +18,7 @@ impl Serialize for Sort {
                 let mut state = serializer.serialize_struct("SortApp", 3)?;
                 state.serialize_field("tag", "SortApp")?;
                 state.serialize_field("name", &id.0)?;
-                let args: Vec<&Sort> = args.iter().map(|sort| &**sort).collect();
-                state.serialize_field("args", &args)?;
+                state.serialize_field("args", args)?;
                 state.end()
             }
         }

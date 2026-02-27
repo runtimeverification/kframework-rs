@@ -2,7 +2,6 @@ use super::{App, Id, Pattern, SVar, SetVarId, Sort, Str, SymbolId, Var};
 use serde;
 use serde::de::{Deserialize, Deserializer, Error, MapAccess, Unexpected, Visitor};
 use std::fmt;
-use std::sync::Arc;
 
 macro_rules! deserialize_for_id {
     ($struct:ident, $expecting:expr, $valid_value:expr) => {
@@ -102,7 +101,6 @@ impl<'de> Deserialize<'de> for Sort {
                     Tag::SortVar => Ok(Sort::Var(id)),
                     Tag::SortApp => {
                         let args = args.ok_or_else(|| Error::missing_field("args"))?;
-                        let args = args.into_iter().map(Arc::new).collect::<Box<_>>();
                         Ok(Sort::App { id, args })
                     }
                 }
