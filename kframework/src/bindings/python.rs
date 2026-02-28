@@ -5,6 +5,7 @@ use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyNone, PyString, PyTuple},
+    PyClass,
 };
 use serde_json::Number;
 
@@ -98,6 +99,31 @@ fn pyobject_to_serde_value(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value
     }
 }
 
+trait Wrappable<RustType>: Sized {
+    fn wrap(py: Python<'_>, rust: &RustType) -> PyResult<Self>;
+}
+
+fn convert<SubClass, RustType>(
+    py: Python<'_>,
+    it: RustType,
+) -> PyResult<Bound<'_, SubClass::BaseType>>
+where
+    SubClass: PyClass + Wrappable<RustType>,
+    SubClass::BaseType: Wrappable<RustType>,
+    (SubClass, SubClass::BaseType): Into<PyClassInitializer<SubClass>>,
+{
+    let s = SubClass::wrap(py, &it)?;
+    let b = SubClass::BaseType::wrap(py, &it)?;
+
+    Ok(Bound::new(py, (s, b))?.cast_into::<SubClass::BaseType>()?)
+}
+
+/// [`PySort`]
+#[pyclass(subclass, name = "Sort")]
+pub struct PySort {
+    wrapped: Box<Sort>,
+}
+
 impl<'py> IntoPyObject<'py> for Sort {
     type Target = PySort;
 
@@ -107,30 +133,28 @@ impl<'py> IntoPyObject<'py> for Sort {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
-            Sort::Var(_) => {
-                let wrapped = SortVar::make_wrapped(py, &self)?;
-                let self_ = PySort {
-                    wrapped: self.into(),
-                };
-
-                Ok(Bound::new(py, (wrapped, self_))?.cast_into::<PySort>()?)
-            }
-            Sort::App { .. } => {
-                let wrapped = SortApp::make_wrapped(py, &self)?;
-                let self_ = PySort {
-                    wrapped: self.into(),
-                };
-
-                Ok(Bound::new(py, (wrapped, self_))?.cast_into::<PySort>()?)
-            }
+            Sort::Var(_) => convert::<SortVar, _>(py, self),
+            Sort::App { .. } => convert::<SortApp, _>(py, self),
         }
     }
 }
 
-/// [`PySort`]
-#[pyclass(subclass, name = "Sort")]
-pub struct PySort {
-    wrapped: Box<Sort>,
+impl<'a, 'py> FromPyObject<'a, 'py> for Sort {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        Ok(obj
+            .cast::<PySort>()
+            .map(|sort| *sort.borrow().wrapped.clone())?)
+    }
+}
+
+impl Wrappable<Sort> for PySort {
+    fn wrap(_py: Python<'_>, rust: &Sort) -> PyResult<Self> {
+        Ok(Self {
+            wrapped: rust.clone().into(),
+        })
+    }
 }
 
 #[pymethods]
@@ -166,18 +190,15 @@ impl PySort {
 #[pyclass(extends = PySort)]
 pub struct SortVar {
     #[pyo3(get)]
-    name: Py<PyString>,
+    name: String,
 }
 
-impl SortVar {
-    fn make_wrapped(py: Python<'_>, sort: &Sort) -> PyResult<SortVar> {
-        match sort {
-            Sort::Var(id) => {
-                let name = PyString::new(py, id.clone().value().as_str());
-                Ok(SortVar {
-                    name: name.unbind(),
-                })
-            }
+impl Wrappable<Sort> for SortVar {
+    fn wrap(_py: Python<'_>, it: &Sort) -> PyResult<Self> {
+        match it {
+            Sort::Var(id) => Ok(SortVar {
+                name: id.clone().value(),
+            }),
             _ => Err(PyTypeError::new_err(
                 "Attempted to create wrapped value from wrong base value",
             )),
@@ -188,27 +209,17 @@ impl SortVar {
 #[pymethods]
 impl SortVar {
     #[new]
-    fn new_(py: Python<'_>, name: &Bound<'_, PyString>) -> PyResult<Py<PySort>> {
-        let id_rust = Id::new(name.to_string()).map_err(PyValueError::new_err)?;
-        let sort = Sort::Var(id_rust);
+    fn new_(py: Python<'_>, name: String) -> PyResult<Py<PySort>> {
+        let id = Id::new(name).map_err(PyValueError::new_err)?;
+        let sort = Sort::Var(id);
 
-        let super_ = PySort {
-            wrapped: sort.into(),
-        };
-
-        let self_ = Self {
-            name: name.clone().unbind(),
-        };
-
-        Ok(Bound::new(py, (self_, super_))?.into_super().unbind())
+        sort.into_pyobject(py).map(Bound::unbind)
     }
 
     #[pyo3(signature = (name=None))]
     fn r#let(&self, py: Python<'_>, name: Option<String>) -> PyResult<Py<PySort>> {
-        let name = name
-            .map(|s| PyString::new(py, s.as_str()))
-            .unwrap_or(self.name.bind(py).clone());
-        Self::new_(py, &name)
+        let name = name.unwrap_or(self.name.clone());
+        Self::new_(py, name)
     }
 
     #[classattr]
@@ -222,26 +233,18 @@ impl SortVar {
 #[pyclass(extends = PySort)]
 pub struct SortApp {
     #[pyo3(get)]
-    name: Py<PyString>,
+    name: String,
     #[pyo3(get)]
-    sorts: Py<PyTuple>,
+    sorts: Vec<Sort>,
 }
 
-impl SortApp {
-    fn make_wrapped(py: Python<'_>, sort: &Sort) -> PyResult<Self> {
-        match sort {
-            Sort::App { id, args } => {
-                let id: Bound<'_, PyString> = PyString::new(py, id.clone().value().as_str());
-                let children_: Vec<_> = args
-                    .iter()
-                    .map(|sort| sort.clone().into_pyobject(py))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let args = PyTuple::new(py, children_)?;
-                Ok(Self {
-                    name: id.unbind(),
-                    sorts: args.unbind(),
-                })
-            }
+impl Wrappable<Sort> for SortApp {
+    fn wrap(_py: Python<'_>, it: &Sort) -> PyResult<Self> {
+        match it {
+            Sort::App { id, args } => Ok(Self {
+                name: id.clone().value(),
+                sorts: args.to_vec(),
+            }),
             _ => Err(PyTypeError::new_err(
                 "Attempted to create wrapped value from wrong base value",
             )),
@@ -253,38 +256,15 @@ impl SortApp {
 impl SortApp {
     #[new]
     #[pyo3(signature = (name, sorts=None))]
-    fn new_<'py>(
-        py: Python<'py>,
-        name: &Bound<'py, PyString>,
-        sorts: Option<&Bound<'py, PyTuple>>,
-    ) -> PyResult<Py<PySort>> {
-        let id_rust = Id::new(name.to_string()).map_err(PyValueError::new_err)?;
-        let empty = &PyTuple::empty(py);
-        let sorts = sorts.unwrap_or(empty);
-
-        let args_vec: Vec<Sort> = sorts
-            .iter()
-            .map(|obj| {
-                obj.cast_into::<PySort>()
-                    .map(|bound| (*bound.borrow().wrapped).clone())
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+    fn new_(py: Python<'_>, name: String, sorts: Option<Vec<Sort>>) -> PyResult<Py<PySort>> {
+        let id = Id::new(name).map_err(PyValueError::new_err)?;
 
         let sort = Sort::App {
-            id: id_rust,
-            args: args_vec,
+            id,
+            args: sorts.unwrap_or(vec![]),
         };
 
-        let super_ = PySort {
-            wrapped: sort.into(),
-        };
-
-        let self_ = Self {
-            name: name.clone().unbind(),
-            sorts: sorts.clone().unbind(),
-        };
-
-        Ok(Bound::new(py, (self_, super_))?.into_super().unbind())
+        sort.into_pyobject(py).map(Bound::unbind)
     }
 
     #[pyo3(signature = (name=None, sorts=None))]
@@ -292,13 +272,11 @@ impl SortApp {
         &self,
         py: Python<'_>,
         name: Option<String>,
-        sorts: Option<&Bound<'_, PyTuple>>,
+        sorts: Option<Vec<Sort>>,
     ) -> PyResult<Py<PySort>> {
-        let name = name
-            .map(|s| PyString::new(py, s.as_str()).unbind())
-            .unwrap_or(self.name.clone_ref(py));
-        let args = sorts.unwrap_or(self.sorts.bind(py));
-        Self::new_(py, name.bind(py), Some(args))
+        let name = name.unwrap_or_else(|| self.name.clone());
+        let sorts = sorts.unwrap_or_else(|| self.sorts.clone());
+        Self::new_(py, name, Some(sorts))
     }
 
     #[classattr]
