@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::kore::{Id, Sort};
 use pyo3::{
-    exceptions::PyValueError,
+    exceptions::{PyTypeError, PyValueError},
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyNone, PyString, PyTuple},
 };
@@ -98,51 +98,61 @@ fn pyobject_to_serde_value(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value
     }
 }
 
+impl<'py> IntoPyObject<'py> for Sort {
+    type Target = PySort;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self {
+            Sort::Var(_) => {
+                let wrapped = SortVar::make_wrapped(py, &self)?;
+                let self_ = PySort {
+                    wrapped: self.into(),
+                };
+
+                Ok(Bound::new(py, (wrapped, self_))?.cast_into::<PySort>()?)
+            }
+            Sort::App { .. } => {
+                let wrapped = SortApp::make_wrapped(py, &self)?;
+                let self_ = PySort {
+                    wrapped: self.into(),
+                };
+
+                Ok(Bound::new(py, (wrapped, self_))?.cast_into::<PySort>()?)
+            }
+        }
+    }
+}
+
 /// [`PySort`]
 #[pyclass(subclass, name = "Sort")]
 pub struct PySort {
     wrapped: Box<Sort>,
 }
 
-/// Convert a [`Sort`] to a [`PySort`]
-fn sort_to_pysort(py: Python<'_>, sort: &Sort) -> PyResult<Py<PySort>> {
-    match sort {
-        Sort::Var(id) => {
-            let id: &Bound<'_, PyString> = &id.clone().value().into_pyobject(py)?;
-            SortVar::new_(py, id)
-        }
-        Sort::App { id, args } => {
-            let id: &Bound<'_, PyString> = &id.clone().value().into_pyobject(py)?;
-            let children_: Vec<_> = args
-                .iter()
-                .map(|sort| sort_to_pysort(py, sort))
-                .collect::<Result<Vec<_>, _>>()?;
-            let args = PyTuple::new(py, children_)?;
-            SortApp::new_(py, id, Some(&args))
-        }
-    }
-}
-
 #[pymethods]
 impl PySort {
     #[staticmethod]
-    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Py<Self>> {
+    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, Self>> {
         use crate::kore::Parser;
 
         let sort: Sort = Parser::new(s)
             .and_then(|mut p| p.sort())
             .map_err(PyValueError::new_err)?;
 
-        sort_to_pysort(py, &sort)
+        sort.into_pyobject(py)
     }
 
     #[staticmethod]
-    fn from_dict(dict: &Bound<'_, PyAny>) -> PyResult<Py<Self>> {
+    fn from_dict<'py>(dict: &Bound<'py, PyAny>) -> PyResult<Bound<'py, Self>> {
         let value = pyobject_to_serde_value(dict)?;
         let sort: Sort =
             serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        sort_to_pysort(dict.py(), &sort)
+        sort.into_pyobject(dict.py())
     }
 
     fn dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
@@ -157,6 +167,22 @@ impl PySort {
 pub struct SortVar {
     #[pyo3(get)]
     name: Py<PyString>,
+}
+
+impl SortVar {
+    fn make_wrapped(py: Python<'_>, sort: &Sort) -> PyResult<SortVar> {
+        match sort {
+            Sort::Var(id) => {
+                let name = PyString::new(py, id.clone().value().as_str());
+                Ok(SortVar {
+                    name: name.unbind(),
+                })
+            }
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
 }
 
 #[pymethods]
@@ -199,6 +225,28 @@ pub struct SortApp {
     name: Py<PyString>,
     #[pyo3(get)]
     sorts: Py<PyTuple>,
+}
+
+impl SortApp {
+    fn make_wrapped(py: Python<'_>, sort: &Sort) -> PyResult<Self> {
+        match sort {
+            Sort::App { id, args } => {
+                let id: Bound<'_, PyString> = PyString::new(py, id.clone().value().as_str());
+                let children_: Vec<_> = args
+                    .iter()
+                    .map(|sort| sort.clone().into_pyobject(py))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let args = PyTuple::new(py, children_)?;
+                Ok(Self {
+                    name: id.unbind(),
+                    sorts: args.unbind(),
+                })
+            }
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
 }
 
 #[pymethods]
