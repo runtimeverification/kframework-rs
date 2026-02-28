@@ -118,7 +118,7 @@ fn sort_to_pysort(py: Python<'_>, sort: &Sort) -> PyResult<Py<PySort>> {
                 .map(|sort| sort_to_pysort(py, sort))
                 .collect::<Result<Vec<_>, _>>()?;
             let args = PyTuple::new(py, children_)?;
-            SortApp::new_(py, id, &args)
+            SortApp::new_(py, id, Some(&args))
         }
     }
 }
@@ -142,8 +142,7 @@ impl PySort {
         let sort: Sort =
             serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        let py = dict.py();
-        sort_to_pysort(py, &sort)
+        sort_to_pysort(dict.py(), &sort)
     }
 
     fn dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
@@ -163,8 +162,8 @@ pub struct SortVar {
 #[pymethods]
 impl SortVar {
     #[new]
-    fn new_(py: Python<'_>, id: &Bound<'_, PyString>) -> PyResult<Py<PySort>> {
-        let id_rust = Id::new(id.to_string()).map_err(PyValueError::new_err)?;
+    fn new_(py: Python<'_>, name: &Bound<'_, PyString>) -> PyResult<Py<PySort>> {
+        let id_rust = Id::new(name.to_string()).map_err(PyValueError::new_err)?;
         let sort = Sort::Var(id_rust);
 
         let super_ = PySort {
@@ -172,10 +171,18 @@ impl SortVar {
         };
 
         let self_ = Self {
-            name: id.clone().unbind(),
+            name: name.clone().unbind(),
         };
 
         Ok(Bound::new(py, (self_, super_))?.into_super().unbind())
+    }
+
+    #[pyo3(signature = (name=None))]
+    fn r#let(&self, py: Python<'_>, name: Option<String>) -> PyResult<Py<PySort>> {
+        let name = name
+            .map(|s| PyString::new(py, s.as_str()))
+            .unwrap_or(self.name.bind(py).clone());
+        Self::new_(py, &name)
     }
 
     #[classattr]
@@ -191,20 +198,23 @@ pub struct SortApp {
     #[pyo3(get)]
     name: Py<PyString>,
     #[pyo3(get)]
-    args: Py<PyTuple>,
+    sorts: Py<PyTuple>,
 }
 
 #[pymethods]
 impl SortApp {
     #[new]
+    #[pyo3(signature = (name, sorts=None))]
     fn new_<'py>(
         py: Python<'py>,
-        id: &Bound<'py, PyString>,
-        args: &Bound<'py, PyTuple>,
+        name: &Bound<'py, PyString>,
+        sorts: Option<&Bound<'py, PyTuple>>,
     ) -> PyResult<Py<PySort>> {
-        let id_rust = Id::new(id.to_string()).map_err(PyValueError::new_err)?;
+        let id_rust = Id::new(name.to_string()).map_err(PyValueError::new_err)?;
+        let empty = &PyTuple::empty(py);
+        let sorts = sorts.unwrap_or(empty);
 
-        let args_vec: Vec<Sort> = args
+        let args_vec: Vec<Sort> = sorts
             .iter()
             .map(|obj| {
                 obj.cast_into::<PySort>()
@@ -222,18 +232,32 @@ impl SortApp {
         };
 
         let self_ = Self {
-            name: id.clone().unbind(),
-            args: args.clone().unbind(),
+            name: name.clone().unbind(),
+            sorts: sorts.clone().unbind(),
         };
 
         Ok(Bound::new(py, (self_, super_))?.into_super().unbind())
+    }
+
+    #[pyo3(signature = (name=None, sorts=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        name: Option<String>,
+        sorts: Option<&Bound<'_, PyTuple>>,
+    ) -> PyResult<Py<PySort>> {
+        let name = name
+            .map(|s| PyString::new(py, s.as_str()).unbind())
+            .unwrap_or(self.name.clone_ref(py));
+        let args = sorts.unwrap_or(self.sorts.bind(py));
+        Self::new_(py, name.bind(py), Some(args))
     }
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let app_annotations = PyDict::new(py);
         app_annotations.set_item("name", py.get_type::<PyString>())?;
-        app_annotations.set_item("args", py.get_type::<PyTuple>())?;
+        app_annotations.set_item("sorts", py.get_type::<PyTuple>())?;
         Ok(app_annotations)
     }
 }
