@@ -99,8 +99,18 @@ fn pyobject_to_serde_value(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value
     }
 }
 
-trait Wrappable<RustType>: Sized {
+trait Wrappable<RustType>: Sized
+where
+    RustType: std::fmt::Debug,
+{
     fn wrap(py: Python<'_>, rust: &RustType) -> PyResult<Self>;
+
+    fn error(rust: &RustType) -> PyResult<Self> {
+        Err(PyTypeError::new_err(format!(
+            "Error wrapping rust value into python object: {:?}",
+            rust
+        )))
+    }
 }
 
 fn convert<SubClass, RustType>(
@@ -108,6 +118,7 @@ fn convert<SubClass, RustType>(
     it: RustType,
 ) -> PyResult<Bound<'_, SubClass::BaseType>>
 where
+    RustType: std::fmt::Debug,
     SubClass: PyClass + Wrappable<RustType>,
     SubClass::BaseType: Wrappable<RustType>,
     (SubClass, SubClass::BaseType): Into<PyClassInitializer<SubClass>>,
@@ -198,13 +209,12 @@ pub struct SortVar {
 
 impl Wrappable<Sort> for SortVar {
     fn wrap(_py: Python<'_>, it: &Sort) -> PyResult<Self> {
-        match it {
-            Sort::Var(id) => Ok(SortVar {
+        if let Sort::Var(id) = it {
+            Ok(SortVar {
                 name: id.clone().value(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -243,14 +253,13 @@ pub struct SortApp {
 
 impl Wrappable<Sort> for SortApp {
     fn wrap(_py: Python<'_>, it: &Sort) -> PyResult<Self> {
-        match it {
-            Sort::App { id, args } => Ok(Self {
+        if let Sort::App { id, args } = it {
+            Ok(Self {
                 name: id.clone().value(),
                 sorts: args.to_vec(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -397,14 +406,13 @@ pub struct EVar {
 
 impl Wrappable<Pattern> for EVar {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Var(var) => Ok(Self {
+        if let Pattern::Var(var) = it {
+            Ok(Self {
                 name: var.id.clone().value(),
                 sort: var.sort.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -439,14 +447,13 @@ pub struct SVar {
 
 impl Wrappable<Pattern> for SVar {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::SVar(svar) => Ok(Self {
+        if let Pattern::SVar(svar) = it {
+            Ok(Self {
                 name: svar.id.clone().value(),
                 sort: svar.sort.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -479,13 +486,10 @@ pub struct KoreString {
 
 impl Wrappable<Pattern> for KoreString {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Str(s) => Ok(Self {
-                value: s.0.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+        if let Pattern::Str(s) = it {
+            Ok(Self { value: s.0.clone() })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -520,15 +524,14 @@ pub struct App {
 
 impl Wrappable<Pattern> for App {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::App(app) => Ok(Self {
+        if let Pattern::App(app) = it {
+            Ok(Self {
                 symbol: app.symbol.clone().value(),
                 sorts: app.sorts.clone(),
                 args: app.args.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -576,15 +579,14 @@ pub struct LeftAssoc {
 
 impl Wrappable<Pattern> for LeftAssoc {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::LeftAssoc(app) => Ok(Self {
+        if let Pattern::LeftAssoc(app) = it {
+            Ok(Self {
                 symbol: app.symbol.clone().value(),
                 sorts: app.sorts.clone(),
                 args: app.args.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -632,15 +634,14 @@ pub struct RightAssoc {
 
 impl Wrappable<Pattern> for RightAssoc {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::RightAssoc(app) => Ok(Self {
+        if let Pattern::RightAssoc(app) = it {
+            Ok(Self {
                 symbol: app.symbol.clone().value(),
                 sorts: app.sorts.clone(),
                 args: app.args.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -684,11 +685,10 @@ pub struct Top {
 
 impl Wrappable<Pattern> for Top {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Top(sort) => Ok(Self { sort: sort.clone() }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+        if let Pattern::Top(sort) = it {
+            Ok(Self { sort: sort.clone() })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -719,11 +719,10 @@ pub struct Bottom {
 
 impl Wrappable<Pattern> for Bottom {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Bottom(sort) => Ok(Self { sort: sort.clone() }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+        if let Pattern::Bottom(sort) = it {
+            Ok(Self { sort: sort.clone() })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -756,14 +755,13 @@ pub struct DV {
 
 impl Wrappable<Pattern> for DV {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Dv { sort, value } => Ok(Self {
+        if let Pattern::Dv { sort, value } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 value: Pattern::Str(value.clone()),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -774,11 +772,7 @@ impl DV {
     fn new_(py: Python<'_>, sort: Sort, value: Pattern) -> PyResult<Py<PyPattern>> {
         let str_value = match value {
             Pattern::Str(s) => s,
-            _ => {
-                return Err(PyTypeError::new_err(
-                    "value must be a String pattern",
-                ))
-            }
+            _ => return Err(PyTypeError::new_err("value must be a String pattern")),
         };
         let pattern = Pattern::Dv {
             sort,
@@ -808,14 +802,13 @@ pub struct Not {
 
 impl Wrappable<Pattern> for Not {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Not { sort, op } => Ok(Self {
+        if let Pattern::Not { sort, op } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -852,14 +845,13 @@ pub struct Next {
 
 impl Wrappable<Pattern> for Next {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Next { sort, op } => Ok(Self {
+        if let Pattern::Next { sort, op } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -898,15 +890,14 @@ pub struct Implies {
 
 impl Wrappable<Pattern> for Implies {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Implies { sort, left, right } => Ok(Self {
+        if let Pattern::Implies { sort, left, right } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 left: *left.clone(),
                 right: *right.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -914,12 +905,7 @@ impl Wrappable<Pattern> for Implies {
 #[pymethods]
 impl Implies {
     #[new]
-    fn new_(
-        py: Python<'_>,
-        sort: Sort,
-        left: Pattern,
-        right: Pattern,
-    ) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, sort: Sort, left: Pattern, right: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Implies {
             sort,
             left: Box::new(left),
@@ -952,15 +938,14 @@ pub struct Iff {
 
 impl Wrappable<Pattern> for Iff {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Iff { sort, left, right } => Ok(Self {
+        if let Pattern::Iff { sort, left, right } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 left: *left.clone(),
                 right: *right.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -968,12 +953,7 @@ impl Wrappable<Pattern> for Iff {
 #[pymethods]
 impl Iff {
     #[new]
-    fn new_(
-        py: Python<'_>,
-        sort: Sort,
-        left: Pattern,
-        right: Pattern,
-    ) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, sort: Sort, left: Pattern, right: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Iff {
             sort,
             left: Box::new(left),
@@ -1006,15 +986,14 @@ pub struct Rewrites {
 
 impl Wrappable<Pattern> for Rewrites {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Rewrites { sort, left, right } => Ok(Self {
+        if let Pattern::Rewrites { sort, left, right } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 left: *left.clone(),
                 right: *right.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1022,12 +1001,7 @@ impl Wrappable<Pattern> for Rewrites {
 #[pymethods]
 impl Rewrites {
     #[new]
-    fn new_(
-        py: Python<'_>,
-        sort: Sort,
-        left: Pattern,
-        right: Pattern,
-    ) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, sort: Sort, left: Pattern, right: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Rewrites {
             sort,
             left: Box::new(left),
@@ -1058,14 +1032,13 @@ pub struct And {
 
 impl Wrappable<Pattern> for And {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::And { sort, ops } => Ok(Self {
+        if let Pattern::And { sort, ops } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 ops: ops.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1099,14 +1072,13 @@ pub struct Or {
 
 impl Wrappable<Pattern> for Or {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Or { sort, ops } => Ok(Self {
+        if let Pattern::Or { sort, ops } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 ops: ops.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1142,15 +1114,14 @@ pub struct Exists {
 
 impl Wrappable<Pattern> for Exists {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Exists { sort, var, op } => Ok(Self {
+        if let Pattern::Exists { sort, var, op } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 var: Pattern::Var(var.clone()),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1158,19 +1129,10 @@ impl Wrappable<Pattern> for Exists {
 #[pymethods]
 impl Exists {
     #[new]
-    fn new_(
-        py: Python<'_>,
-        sort: Sort,
-        var: Pattern,
-        pattern: Pattern,
-    ) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, sort: Sort, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let var = match var {
             Pattern::Var(v) => v,
-            _ => {
-                return Err(PyTypeError::new_err(
-                    "var must be an EVar pattern",
-                ))
-            }
+            _ => return Err(PyTypeError::new_err("var must be an EVar pattern")),
         };
         let pat = Pattern::Exists {
             sort,
@@ -1204,15 +1166,14 @@ pub struct Forall {
 
 impl Wrappable<Pattern> for Forall {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Forall { sort, var, op } => Ok(Self {
+        if let Pattern::Forall { sort, var, op } = it {
+            Ok(Self {
                 sort: sort.clone(),
                 var: Pattern::Var(var.clone()),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1220,19 +1181,10 @@ impl Wrappable<Pattern> for Forall {
 #[pymethods]
 impl Forall {
     #[new]
-    fn new_(
-        py: Python<'_>,
-        sort: Sort,
-        var: Pattern,
-        pattern: Pattern,
-    ) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, sort: Sort, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let var = match var {
             Pattern::Var(v) => v,
-            _ => {
-                return Err(PyTypeError::new_err(
-                    "var must be an EVar pattern",
-                ))
-            }
+            _ => return Err(PyTypeError::new_err("var must be an EVar pattern")),
         };
         let pat = Pattern::Forall {
             sort,
@@ -1264,14 +1216,13 @@ pub struct Mu {
 
 impl Wrappable<Pattern> for Mu {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Mu { var, op } => Ok(Self {
+        if let Pattern::Mu { var, op } = it {
+            Ok(Self {
                 var: Pattern::SVar(var.clone()),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1282,11 +1233,7 @@ impl Mu {
     fn new_(py: Python<'_>, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let var = match var {
             Pattern::SVar(v) => v,
-            _ => {
-                return Err(PyTypeError::new_err(
-                    "var must be an SVar pattern",
-                ))
-            }
+            _ => return Err(PyTypeError::new_err("var must be an SVar pattern")),
         };
         let pat = Pattern::Mu {
             var,
@@ -1316,14 +1263,13 @@ pub struct Nu {
 
 impl Wrappable<Pattern> for Nu {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Nu { var, op } => Ok(Self {
+        if let Pattern::Nu { var, op } = it {
+            Ok(Self {
                 var: Pattern::SVar(var.clone()),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1334,11 +1280,7 @@ impl Nu {
     fn new_(py: Python<'_>, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let var = match var {
             Pattern::SVar(v) => v,
-            _ => {
-                return Err(PyTypeError::new_err(
-                    "var must be an SVar pattern",
-                ))
-            }
+            _ => return Err(PyTypeError::new_err("var must be an SVar pattern")),
         };
         let pat = Pattern::Nu {
             var,
@@ -1370,15 +1312,14 @@ pub struct Ceil {
 
 impl Wrappable<Pattern> for Ceil {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Ceil { op_sort, sort, op } => Ok(Self {
+        if let Pattern::Ceil { op_sort, sort, op } = it {
+            Ok(Self {
                 op_sort: op_sort.clone(),
                 sort: sort.clone(),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1424,15 +1365,14 @@ pub struct Floor {
 
 impl Wrappable<Pattern> for Floor {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Floor { op_sort, sort, op } => Ok(Self {
+        if let Pattern::Floor { op_sort, sort, op } = it {
+            Ok(Self {
                 op_sort: op_sort.clone(),
                 sort: sort.clone(),
                 pattern: *op.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1480,21 +1420,21 @@ pub struct Equals {
 
 impl Wrappable<Pattern> for Equals {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::Equals {
-                op_sort,
-                sort,
-                left,
-                right,
-            } => Ok(Self {
+        if let Pattern::Equals {
+            op_sort,
+            sort,
+            left,
+            right,
+        } = it
+        {
+            Ok(Self {
                 op_sort: op_sort.clone(),
                 sort: sort.clone(),
                 left: *left.clone(),
                 right: *right.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1545,21 +1485,21 @@ pub struct In {
 
 impl Wrappable<Pattern> for In {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
-        match it {
-            Pattern::In {
-                op_sort,
-                sort,
-                left,
-                right,
-            } => Ok(Self {
+        if let Pattern::In {
+            op_sort,
+            sort,
+            left,
+            right,
+        } = it
+        {
+            Ok(Self {
                 op_sort: op_sort.clone(),
                 sort: sort.clone(),
                 left: *left.clone(),
                 right: *right.clone(),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1769,14 +1709,13 @@ pub struct Import {
 
 impl Wrappable<Sentence> for Import {
     fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
-        match it {
-            Sentence::Import { module, attrs } => Ok(Self {
+        if let Sentence::Import { module, attrs } = it {
+            Ok(Self {
                 module_name: module.clone().value(),
                 attrs: apps_to_patterns(attrs),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1821,21 +1760,21 @@ pub struct SortDecl {
 
 impl Wrappable<Sentence> for SortDecl {
     fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
-        match it {
-            Sentence::Sort {
-                id,
-                vars,
-                attrs,
-                hooked,
-            } => Ok(Self {
+        if let Sentence::Sort {
+            id,
+            vars,
+            attrs,
+            hooked,
+        } = it
+        {
+            Ok(Self {
                 name: id.clone().value(),
                 vars: ids_to_sort_vars(vars),
                 attrs: apps_to_patterns(attrs),
                 hooked: *hooked,
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1892,15 +1831,16 @@ pub struct SymbolDecl {
 
 impl Wrappable<Sentence> for SymbolDecl {
     fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
-        match it {
-            Sentence::Symbol {
-                id,
-                vars,
-                param_sorts,
-                sort,
-                attrs,
-                hooked,
-            } => Ok(Self {
+        if let Sentence::Symbol {
+            id,
+            vars,
+            param_sorts,
+            sort,
+            attrs,
+            hooked,
+        } = it
+        {
+            Ok(Self {
                 symbol: SymbolData {
                     name: id.clone().value(),
                     vars: ids_to_sort_vars(vars),
@@ -1909,10 +1849,9 @@ impl Wrappable<Sentence> for SymbolDecl {
                 sort: sort.clone(),
                 attrs: apps_to_patterns(attrs),
                 hooked: *hooked,
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -1975,16 +1914,17 @@ pub struct AliasDecl {
 
 impl Wrappable<Sentence> for AliasDecl {
     fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
-        match it {
-            Sentence::Alias {
-                id,
-                vars,
-                param_sorts,
-                sort,
-                left,
-                right,
-                attrs,
-            } => Ok(Self {
+        if let Sentence::Alias {
+            id,
+            vars,
+            param_sorts,
+            sort,
+            left,
+            right,
+            attrs,
+        } = it
+        {
+            Ok(Self {
                 alias: SymbolData {
                     name: id.clone().value(),
                     vars: ids_to_sort_vars(vars),
@@ -1994,10 +1934,9 @@ impl Wrappable<Sentence> for AliasDecl {
                 left: Pattern::App(left.clone()),
                 right: *right.clone(),
                 attrs: apps_to_patterns(attrs),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -2061,19 +2000,19 @@ pub struct Axiom {
 
 impl Wrappable<Sentence> for Axiom {
     fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
-        match it {
-            Sentence::Axiom {
-                vars,
-                pattern,
-                attrs,
-            } => Ok(Self {
+        if let Sentence::Axiom {
+            vars,
+            pattern,
+            attrs,
+        } = it
+        {
+            Ok(Self {
                 vars: ids_to_sort_vars(vars),
                 pattern: *pattern.clone(),
                 attrs: apps_to_patterns(attrs),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
@@ -2122,19 +2061,19 @@ pub struct Claim {
 
 impl Wrappable<Sentence> for Claim {
     fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
-        match it {
-            Sentence::Claim {
-                vars,
-                pattern,
-                attrs,
-            } => Ok(Self {
+        if let Sentence::Claim {
+            vars,
+            pattern,
+            attrs,
+        } = it
+        {
+            Ok(Self {
                 vars: ids_to_sort_vars(vars),
                 pattern: *pattern.clone(),
                 attrs: apps_to_patterns(attrs),
-            }),
-            _ => Err(PyTypeError::new_err(
-                "Attempted to create wrapped value from wrong base value",
-            )),
+            })
+        } else {
+            Self::error(it)
         }
     }
 }
