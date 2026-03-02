@@ -1570,7 +1570,8 @@ fn sort_vars_to_ids(sorts: Vec<Sort>) -> PyResult<Vec<Id>> {
 
 // --- Symbol (standalone pyclass, not a Sentence subclass) ---
 
-#[pyclass]
+#[pyclass(from_py_object)]
+#[derive(Clone)]
 pub struct Symbol {
     #[pyo3(get)]
     name: String,
@@ -1599,43 +1600,6 @@ impl Symbol {
         annotations.set_item("name", py.get_type::<PyString>())?;
         annotations.set_item("vars", py.get_type::<PyTuple>())?;
         Ok(annotations)
-    }
-}
-
-/// Helper type for storing Symbol data in Sentence subclass fields.
-/// Implements IntoPyObject/FromPyObject to convert to/from the Symbol pyclass.
-#[derive(Clone)]
-struct SymbolData {
-    name: String,
-    vars: Vec<Sort>,
-}
-
-impl<'py> IntoPyObject<'py> for SymbolData {
-    type Target = Symbol;
-    type Output = Bound<'py, Symbol>;
-    type Error = PyErr;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        Bound::new(
-            py,
-            Symbol {
-                name: self.name,
-                vars: self.vars,
-            },
-        )
-    }
-}
-
-impl<'a, 'py> FromPyObject<'a, 'py> for SymbolData {
-    type Error = PyErr;
-
-    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
-        let sym = obj.cast::<Symbol>()?;
-        let borrow = sym.borrow();
-        Ok(SymbolData {
-            name: borrow.name.clone(),
-            vars: borrow.vars.clone(),
-        })
     }
 }
 
@@ -1818,7 +1782,7 @@ impl SortDecl {
 #[pyclass(extends = PySentence)]
 pub struct SymbolDecl {
     #[pyo3(get)]
-    symbol: SymbolData,
+    symbol: Symbol,
     #[pyo3(get)]
     param_sorts: Vec<Sort>,
     #[pyo3(get)]
@@ -1841,7 +1805,7 @@ impl Wrappable<Sentence> for SymbolDecl {
         } = it
         {
             Ok(Self {
-                symbol: SymbolData {
+                symbol: Symbol {
                     name: id.clone().value(),
                     vars: ids_to_sort_vars(vars),
                 },
@@ -1862,7 +1826,7 @@ impl SymbolDecl {
     #[pyo3(signature = (symbol, param_sorts, sort, attrs=None, *, hooked=false))]
     fn new_(
         py: Python<'_>,
-        symbol: SymbolData,
+        symbol: Symbol,
         param_sorts: Vec<Sort>,
         sort: Sort,
         attrs: Option<Vec<Pattern>>,
@@ -1899,7 +1863,7 @@ impl SymbolDecl {
 #[pyclass(extends = PySentence)]
 pub struct AliasDecl {
     #[pyo3(get)]
-    alias: SymbolData,
+    alias: Symbol,
     #[pyo3(get)]
     param_sorts: Vec<Sort>,
     #[pyo3(get)]
@@ -1925,7 +1889,7 @@ impl Wrappable<Sentence> for AliasDecl {
         } = it
         {
             Ok(Self {
-                alias: SymbolData {
+                alias: Symbol {
                     name: id.clone().value(),
                     vars: ids_to_sort_vars(vars),
                 },
@@ -1947,7 +1911,7 @@ impl AliasDecl {
     #[pyo3(signature = (alias, param_sorts, sort, left, right, attrs=None))]
     fn new_(
         py: Python<'_>,
-        alias: SymbolData,
+        alias: Symbol,
         param_sorts: Vec<Sort>,
         sort: Sort,
         left: Pattern,
