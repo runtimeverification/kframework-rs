@@ -93,15 +93,19 @@ mod kframework_py {
                     dataclass.call((module.getattr(class_name)?,), kwargs.as_ref())?;
                 }
 
+                // Module + Definition (standalone)
+                dataclass.call((module.getattr("Module")?,), kwargs.as_ref())?;
+                dataclass.call((module.getattr("Definition")?,), kwargs.as_ref())?;
+
                 Ok(())
             }
 
             #[pymodule_export]
             use kframework::bindings::python::{
                 AliasDecl, And, App, Axiom, Bottom, Ceil, Claim, DV, EVar, Equals, Exists, Floor,
-                Forall, Iff, Implies, Import, In, KoreString, LeftAssoc, Mu, Next, Not, Nu, Or,
-                PyPattern, PySentence, PySort, Rewrites, RightAssoc, SVar, SortApp, SortDecl,
-                SortVar, Symbol, SymbolDecl, Top,
+                Forall, Iff, Implies, Import, In, KoreDefinition, KoreModule, KoreString,
+                LeftAssoc, Mu, Next, Not, Nu, Or, PyPattern, PySentence, PySort, Rewrites,
+                RightAssoc, SVar, SortApp, SortDecl, SortVar, Symbol, SymbolDecl, Top,
             };
         }
     }

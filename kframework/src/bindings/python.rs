@@ -2168,3 +2168,170 @@ impl Claim {
         Ok(annotations)
     }
 }
+
+// ==========================================
+// Module bindings
+// ==========================================
+
+#[pyclass(name = "Module")]
+pub struct KoreModule {
+    #[pyo3(get)]
+    name: String,
+    #[pyo3(get)]
+    sentences: Vec<Sentence>,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+}
+
+impl<'py> IntoPyObject<'py> for crate::kore::Module {
+    type Target = KoreModule;
+    type Output = Bound<'py, KoreModule>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Bound::new(
+            py,
+            KoreModule {
+                name: self.id.value(),
+                sentences: self.sentences,
+                attrs: apps_to_patterns(&self.attrs),
+            },
+        )
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::Module {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let m = obj.cast::<KoreModule>()?;
+        let borrow = m.borrow();
+        let id = Id::new(borrow.name.clone()).map_err(PyValueError::new_err)?;
+        let attrs = patterns_to_apps(borrow.attrs.clone())?;
+        Ok(crate::kore::Module {
+            id,
+            sentences: borrow.sentences.clone(),
+            attrs,
+        })
+    }
+}
+
+#[pymethods]
+impl KoreModule {
+    #[new]
+    #[pyo3(signature = (name, sentences=None, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        name: String,
+        sentences: Option<Vec<Sentence>>,
+        attrs: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<KoreModule>> {
+        let id = Id::new(name.clone()).map_err(PyValueError::new_err)?;
+        let attrs_apps = patterns_to_apps(attrs.unwrap_or_default())?;
+        let module = crate::kore::Module {
+            id,
+            sentences: sentences.unwrap_or_default(),
+            attrs: attrs_apps,
+        };
+        module.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[staticmethod]
+    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, KoreModule>> {
+        use crate::kore::Parser;
+
+        let module: crate::kore::Module = Parser::new(s)
+            .and_then(|mut p| p.module())
+            .map_err(PyValueError::new_err)?;
+
+        module.into_pyobject(py)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("name", py.get_type::<PyString>())?;
+        annotations.set_item("sentences", py.get_type::<PyTuple>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// ==========================================
+// Definition bindings
+// ==========================================
+
+#[pyclass(name = "Definition")]
+pub struct KoreDefinition {
+    #[pyo3(get)]
+    modules: Vec<crate::kore::Module>,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+}
+
+impl<'py> IntoPyObject<'py> for crate::kore::Definition {
+    type Target = KoreDefinition;
+    type Output = Bound<'py, KoreDefinition>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Bound::new(
+            py,
+            KoreDefinition {
+                modules: self.modules,
+                attrs: apps_to_patterns(&self.attrs),
+            },
+        )
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::Definition {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let d = obj.cast::<KoreDefinition>()?;
+        let borrow = d.borrow();
+        let attrs = patterns_to_apps(borrow.attrs.clone())?;
+        Ok(crate::kore::Definition {
+            modules: borrow.modules.clone(),
+            attrs,
+        })
+    }
+}
+
+#[pymethods]
+impl KoreDefinition {
+    #[new]
+    #[pyo3(signature = (modules=None, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        modules: Option<Vec<crate::kore::Module>>,
+        attrs: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<KoreDefinition>> {
+        let attrs_apps = patterns_to_apps(attrs.unwrap_or_default())?;
+        let definition = crate::kore::Definition {
+            modules: modules.unwrap_or_default(),
+            attrs: attrs_apps,
+        };
+        definition.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[staticmethod]
+    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, KoreDefinition>> {
+        use crate::kore::Parser;
+
+        let definition: crate::kore::Definition = Parser::new(s)
+            .and_then(|mut p| p.definition())
+            .map_err(PyValueError::new_err)?;
+
+        definition.into_pyobject(py)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("modules", py.get_type::<PyTuple>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}

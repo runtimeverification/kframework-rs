@@ -247,13 +247,13 @@ pub struct App {
     pub args: Vec<Pattern>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Definition {
     pub modules: Vec<Module>,
     pub attrs: Vec<App>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Module {
     pub id: Id,
     pub sentences: Vec<Sentence>,
