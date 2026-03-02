@@ -37,7 +37,7 @@ impl TryFrom<String> for Id {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SymbolId(pub(crate) String);
 
 impl SymbolId {
@@ -97,7 +97,7 @@ impl TryFrom<String> for SymbolId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SetVarId(pub(crate) String);
 
 impl SetVarId {
@@ -151,7 +151,7 @@ impl TryFrom<String> for SetVarId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Str(pub String);
 
 impl Str {
@@ -228,19 +228,19 @@ impl<T: Into<String>> From<T> for Str {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Var {
     pub id: Id,
     pub sort: Sort,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SVar {
     pub id: SetVarId,
     pub sort: Sort,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct App {
     pub symbol: SymbolId,
     pub sorts: Vec<Sort>,
@@ -307,7 +307,7 @@ pub enum Sort {
     App { id: Id, args: Vec<Sort> },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pattern {
     Var(Var),
     SVar(SVar),

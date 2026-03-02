@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::kore::{Id, Sort};
+use crate::kore::{Id, Pattern, SetVarId, Sort, Str, SymbolId, Var};
 use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     prelude::*,
@@ -118,7 +118,10 @@ where
     Ok(Bound::new(py, (s, b))?.cast_into::<SubClass::BaseType>()?)
 }
 
-/// [`PySort`]
+// ==========================================
+// Sort bindings
+// ==========================================
+
 #[pyclass(subclass, name = "Sort")]
 pub struct PySort {
     wrapped: Box<Sort>,
@@ -285,5 +288,1308 @@ impl SortApp {
         app_annotations.set_item("name", py.get_type::<PyString>())?;
         app_annotations.set_item("sorts", py.get_type::<PyTuple>())?;
         Ok(app_annotations)
+    }
+}
+
+// ==========================================
+// Pattern bindings
+// ==========================================
+
+#[pyclass(subclass, name = "Pattern")]
+pub struct PyPattern {
+    wrapped: Box<Pattern>,
+}
+
+impl<'py> IntoPyObject<'py> for Pattern {
+    type Target = PyPattern;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self {
+            Pattern::Var(_) => convert::<EVar, _>(py, self),
+            Pattern::SVar(_) => convert::<SVar, _>(py, self),
+            Pattern::Str(_) => convert::<KoreString, _>(py, self),
+            Pattern::App(_) => convert::<App, _>(py, self),
+            Pattern::LeftAssoc(_) => convert::<LeftAssoc, _>(py, self),
+            Pattern::RightAssoc(_) => convert::<RightAssoc, _>(py, self),
+            Pattern::Top(_) => convert::<Top, _>(py, self),
+            Pattern::Bottom(_) => convert::<Bottom, _>(py, self),
+            Pattern::Dv { .. } => convert::<DV, _>(py, self),
+            Pattern::Not { .. } => convert::<Not, _>(py, self),
+            Pattern::Implies { .. } => convert::<Implies, _>(py, self),
+            Pattern::Iff { .. } => convert::<Iff, _>(py, self),
+            Pattern::And { .. } => convert::<And, _>(py, self),
+            Pattern::Or { .. } => convert::<Or, _>(py, self),
+            Pattern::Exists { .. } => convert::<Exists, _>(py, self),
+            Pattern::Forall { .. } => convert::<Forall, _>(py, self),
+            Pattern::Mu { .. } => convert::<Mu, _>(py, self),
+            Pattern::Nu { .. } => convert::<Nu, _>(py, self),
+            Pattern::Ceil { .. } => convert::<Ceil, _>(py, self),
+            Pattern::Floor { .. } => convert::<Floor, _>(py, self),
+            Pattern::Equals { .. } => convert::<Equals, _>(py, self),
+            Pattern::In { .. } => convert::<In, _>(py, self),
+            Pattern::Next { .. } => convert::<Next, _>(py, self),
+            Pattern::Rewrites { .. } => convert::<Rewrites, _>(py, self),
+        }
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Pattern {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        Ok(obj
+            .cast::<PyPattern>()
+            .map(|pat| *pat.borrow().wrapped.clone())?)
+    }
+}
+
+impl Wrappable<Pattern> for PyPattern {
+    fn wrap(_py: Python<'_>, rust: &Pattern) -> PyResult<Self> {
+        Ok(Self {
+            wrapped: rust.clone().into(),
+        })
+    }
+}
+
+#[pymethods]
+impl PyPattern {
+    #[staticmethod]
+    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, Self>> {
+        use crate::kore::Parser;
+
+        let pattern: Pattern = Parser::new(s)
+            .and_then(|mut p| p.pattern())
+            .map_err(PyValueError::new_err)?;
+
+        pattern.into_pyobject(py)
+    }
+
+    #[staticmethod]
+    fn from_dict<'py>(dict: &Bound<'py, PyAny>) -> PyResult<Bound<'py, Self>> {
+        let value = pyobject_to_serde_value(dict)?;
+        let pattern: Pattern =
+            serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+        pattern.into_pyobject(dict.py())
+    }
+
+    fn dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let value = serde_json::to_value(self.wrapped.as_ref())
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        serde_value_to_pyobject(py, &value)
+            .and_then(|obj| Ok(obj.cast_bound::<PyDict>(py)?.clone().unbind()))
+    }
+}
+
+// --- EVar ---
+
+#[pyclass(extends = PyPattern)]
+pub struct EVar {
+    #[pyo3(get)]
+    name: String,
+    #[pyo3(get)]
+    sort: Sort,
+}
+
+impl Wrappable<Pattern> for EVar {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Var(var) => Ok(Self {
+                name: var.id.clone().value(),
+                sort: var.sort.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl EVar {
+    #[new]
+    fn new_(py: Python<'_>, name: String, sort: Sort) -> PyResult<Py<PyPattern>> {
+        let id = Id::new(name).map_err(PyValueError::new_err)?;
+        let pattern = Pattern::Var(Var { id, sort });
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("name", py.get_type::<PyString>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        Ok(annotations)
+    }
+}
+
+// --- SVar ---
+
+#[pyclass(extends = PyPattern, name = "SVar")]
+pub struct SVar {
+    #[pyo3(get)]
+    name: String,
+    #[pyo3(get)]
+    sort: Sort,
+}
+
+impl Wrappable<Pattern> for SVar {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::SVar(svar) => Ok(Self {
+                name: svar.id.clone().value(),
+                sort: svar.sort.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl SVar {
+    #[new]
+    fn new_(py: Python<'_>, name: String, sort: Sort) -> PyResult<Py<PyPattern>> {
+        let id = SetVarId::new(name).map_err(PyValueError::new_err)?;
+        let pattern = Pattern::SVar(crate::kore::SVar { id, sort });
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("name", py.get_type::<PyString>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        Ok(annotations)
+    }
+}
+
+// --- String (KoreString) ---
+
+#[pyclass(extends = PyPattern, name = "String")]
+pub struct KoreString {
+    #[pyo3(get)]
+    value: String,
+}
+
+impl Wrappable<Pattern> for KoreString {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Str(s) => Ok(Self {
+                value: s.0.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl KoreString {
+    #[new]
+    fn new_(py: Python<'_>, value: String) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::Str(Str(value));
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("value", py.get_type::<PyString>())?;
+        Ok(annotations)
+    }
+}
+
+// --- App ---
+
+#[pyclass(extends = PyPattern, name = "App")]
+pub struct App {
+    #[pyo3(get)]
+    symbol: String,
+    #[pyo3(get)]
+    sorts: Vec<Sort>,
+    #[pyo3(get)]
+    args: Vec<Pattern>,
+}
+
+impl Wrappable<Pattern> for App {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::App(app) => Ok(Self {
+                symbol: app.symbol.clone().value(),
+                sorts: app.sorts.clone(),
+                args: app.args.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl App {
+    #[new]
+    #[pyo3(signature = (symbol, sorts=None, args=None))]
+    fn new_(
+        py: Python<'_>,
+        symbol: String,
+        sorts: Option<Vec<Sort>>,
+        args: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = SymbolId::new(symbol).map_err(PyValueError::new_err)?;
+        let pattern = Pattern::App(crate::kore::App {
+            symbol,
+            sorts: sorts.unwrap_or_default(),
+            args: args.unwrap_or_default(),
+        });
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("symbol", py.get_type::<PyString>())?;
+        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
+        annotations.set_item("args", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- LeftAssoc ---
+
+#[pyclass(extends = PyPattern)]
+pub struct LeftAssoc {
+    #[pyo3(get)]
+    symbol: String,
+    #[pyo3(get)]
+    sorts: Vec<Sort>,
+    #[pyo3(get)]
+    args: Vec<Pattern>,
+}
+
+impl Wrappable<Pattern> for LeftAssoc {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::LeftAssoc(app) => Ok(Self {
+                symbol: app.symbol.clone().value(),
+                sorts: app.sorts.clone(),
+                args: app.args.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl LeftAssoc {
+    #[new]
+    #[pyo3(signature = (symbol, sorts=None, args=None))]
+    fn new_(
+        py: Python<'_>,
+        symbol: String,
+        sorts: Option<Vec<Sort>>,
+        args: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = SymbolId::new(symbol).map_err(PyValueError::new_err)?;
+        let pattern = Pattern::LeftAssoc(crate::kore::App {
+            symbol,
+            sorts: sorts.unwrap_or_default(),
+            args: args.unwrap_or_default(),
+        });
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("symbol", py.get_type::<PyString>())?;
+        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
+        annotations.set_item("args", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- RightAssoc ---
+
+#[pyclass(extends = PyPattern)]
+pub struct RightAssoc {
+    #[pyo3(get)]
+    symbol: String,
+    #[pyo3(get)]
+    sorts: Vec<Sort>,
+    #[pyo3(get)]
+    args: Vec<Pattern>,
+}
+
+impl Wrappable<Pattern> for RightAssoc {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::RightAssoc(app) => Ok(Self {
+                symbol: app.symbol.clone().value(),
+                sorts: app.sorts.clone(),
+                args: app.args.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl RightAssoc {
+    #[new]
+    #[pyo3(signature = (symbol, sorts=None, args=None))]
+    fn new_(
+        py: Python<'_>,
+        symbol: String,
+        sorts: Option<Vec<Sort>>,
+        args: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = SymbolId::new(symbol).map_err(PyValueError::new_err)?;
+        let pattern = Pattern::RightAssoc(crate::kore::App {
+            symbol,
+            sorts: sorts.unwrap_or_default(),
+            args: args.unwrap_or_default(),
+        });
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("symbol", py.get_type::<PyString>())?;
+        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
+        annotations.set_item("args", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Top ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Top {
+    #[pyo3(get)]
+    sort: Sort,
+}
+
+impl Wrappable<Pattern> for Top {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Top(sort) => Ok(Self { sort: sort.clone() }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Top {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::Top(sort);
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Bottom ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Bottom {
+    #[pyo3(get)]
+    sort: Sort,
+}
+
+impl Wrappable<Pattern> for Bottom {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Bottom(sort) => Ok(Self { sort: sort.clone() }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Bottom {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::Bottom(sort);
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        Ok(annotations)
+    }
+}
+
+// --- DV ---
+
+#[pyclass(extends = PyPattern)]
+pub struct DV {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    value: Pattern,
+}
+
+impl Wrappable<Pattern> for DV {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Dv { sort, value } => Ok(Self {
+                sort: sort.clone(),
+                value: Pattern::Str(value.clone()),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl DV {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort, value: Pattern) -> PyResult<Py<PyPattern>> {
+        let str_value = match value {
+            Pattern::Str(s) => s,
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "value must be a String pattern",
+                ))
+            }
+        };
+        let pattern = Pattern::Dv {
+            sort,
+            value: str_value,
+        };
+        pattern.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("value", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Not ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Not {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Not {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Not { sort, op } => Ok(Self {
+                sort: sort.clone(),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Not {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort, pattern: Pattern) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Not {
+            sort,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Next ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Next {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Next {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Next { sort, op } => Ok(Self {
+                sort: sort.clone(),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Next {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort, pattern: Pattern) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Next {
+            sort,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Implies ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Implies {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    left: Pattern,
+    #[pyo3(get)]
+    right: Pattern,
+}
+
+impl Wrappable<Pattern> for Implies {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Implies { sort, left, right } => Ok(Self {
+                sort: sort.clone(),
+                left: *left.clone(),
+                right: *right.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Implies {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        sort: Sort,
+        left: Pattern,
+        right: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Implies {
+            sort,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Iff ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Iff {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    left: Pattern,
+    #[pyo3(get)]
+    right: Pattern,
+}
+
+impl Wrappable<Pattern> for Iff {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Iff { sort, left, right } => Ok(Self {
+                sort: sort.clone(),
+                left: *left.clone(),
+                right: *right.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Iff {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        sort: Sort,
+        left: Pattern,
+        right: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Iff {
+            sort,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Rewrites ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Rewrites {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    left: Pattern,
+    #[pyo3(get)]
+    right: Pattern,
+}
+
+impl Wrappable<Pattern> for Rewrites {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Rewrites { sort, left, right } => Ok(Self {
+                sort: sort.clone(),
+                left: *left.clone(),
+                right: *right.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Rewrites {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        sort: Sort,
+        left: Pattern,
+        right: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Rewrites {
+            sort,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- And ---
+
+#[pyclass(extends = PyPattern)]
+pub struct And {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    ops: Vec<Pattern>,
+}
+
+impl Wrappable<Pattern> for And {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::And { sort, ops } => Ok(Self {
+                sort: sort.clone(),
+                ops: ops.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl And {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort, ops: Vec<Pattern>) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::And { sort, ops };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("ops", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Or ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Or {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    ops: Vec<Pattern>,
+}
+
+impl Wrappable<Pattern> for Or {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Or { sort, ops } => Ok(Self {
+                sort: sort.clone(),
+                ops: ops.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Or {
+    #[new]
+    fn new_(py: Python<'_>, sort: Sort, ops: Vec<Pattern>) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Or { sort, ops };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("ops", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Exists ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Exists {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    var: Pattern,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Exists {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Exists { sort, var, op } => Ok(Self {
+                sort: sort.clone(),
+                var: Pattern::Var(var.clone()),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Exists {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        sort: Sort,
+        var: Pattern,
+        pattern: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let var = match var {
+            Pattern::Var(v) => v,
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "var must be an EVar pattern",
+                ))
+            }
+        };
+        let pat = Pattern::Exists {
+            sort,
+            var,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("var", py.get_type::<PyPattern>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Forall ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Forall {
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    var: Pattern,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Forall {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Forall { sort, var, op } => Ok(Self {
+                sort: sort.clone(),
+                var: Pattern::Var(var.clone()),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Forall {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        sort: Sort,
+        var: Pattern,
+        pattern: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let var = match var {
+            Pattern::Var(v) => v,
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "var must be an EVar pattern",
+                ))
+            }
+        };
+        let pat = Pattern::Forall {
+            sort,
+            var,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("var", py.get_type::<PyPattern>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Mu ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Mu {
+    #[pyo3(get)]
+    var: Pattern,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Mu {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Mu { var, op } => Ok(Self {
+                var: Pattern::SVar(var.clone()),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Mu {
+    #[new]
+    fn new_(py: Python<'_>, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
+        let var = match var {
+            Pattern::SVar(v) => v,
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "var must be an SVar pattern",
+                ))
+            }
+        };
+        let pat = Pattern::Mu {
+            var,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("var", py.get_type::<PyPattern>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Nu ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Nu {
+    #[pyo3(get)]
+    var: Pattern,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Nu {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Nu { var, op } => Ok(Self {
+                var: Pattern::SVar(var.clone()),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Nu {
+    #[new]
+    fn new_(py: Python<'_>, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
+        let var = match var {
+            Pattern::SVar(v) => v,
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "var must be an SVar pattern",
+                ))
+            }
+        };
+        let pat = Pattern::Nu {
+            var,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("var", py.get_type::<PyPattern>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Ceil ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Ceil {
+    #[pyo3(get)]
+    op_sort: Sort,
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Ceil {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Ceil { op_sort, sort, op } => Ok(Self {
+                op_sort: op_sort.clone(),
+                sort: sort.clone(),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Ceil {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        op_sort: Sort,
+        sort: Sort,
+        pattern: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Ceil {
+            op_sort,
+            sort,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("op_sort", py.get_type::<PySort>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Floor ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Floor {
+    #[pyo3(get)]
+    op_sort: Sort,
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    pattern: Pattern,
+}
+
+impl Wrappable<Pattern> for Floor {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Floor { op_sort, sort, op } => Ok(Self {
+                op_sort: op_sort.clone(),
+                sort: sort.clone(),
+                pattern: *op.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Floor {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        op_sort: Sort,
+        sort: Sort,
+        pattern: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Floor {
+            op_sort,
+            sort,
+            op: Box::new(pattern),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("op_sort", py.get_type::<PySort>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Equals ---
+
+#[pyclass(extends = PyPattern)]
+pub struct Equals {
+    #[pyo3(get)]
+    op_sort: Sort,
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    left: Pattern,
+    #[pyo3(get)]
+    right: Pattern,
+}
+
+impl Wrappable<Pattern> for Equals {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::Equals {
+                op_sort,
+                sort,
+                left,
+                right,
+            } => Ok(Self {
+                op_sort: op_sort.clone(),
+                sort: sort.clone(),
+                left: *left.clone(),
+                right: *right.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Equals {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        op_sort: Sort,
+        sort: Sort,
+        left: Pattern,
+        right: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::Equals {
+            op_sort,
+            sort,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("op_sort", py.get_type::<PySort>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// --- In ---
+
+#[pyclass(extends = PyPattern)]
+pub struct In {
+    #[pyo3(get)]
+    op_sort: Sort,
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    left: Pattern,
+    #[pyo3(get)]
+    right: Pattern,
+}
+
+impl Wrappable<Pattern> for In {
+    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+        match it {
+            Pattern::In {
+                op_sort,
+                sort,
+                left,
+                right,
+            } => Ok(Self {
+                op_sort: op_sort.clone(),
+                sort: sort.clone(),
+                left: *left.clone(),
+                right: *right.clone(),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl In {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        op_sort: Sort,
+        sort: Sort,
+        left: Pattern,
+        right: Pattern,
+    ) -> PyResult<Py<PyPattern>> {
+        let pat = Pattern::In {
+            op_sort,
+            sort,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
+        pat.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("op_sort", py.get_type::<PySort>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
     }
 }

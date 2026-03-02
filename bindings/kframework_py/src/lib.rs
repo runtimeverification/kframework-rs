@@ -39,21 +39,56 @@ mod kframework_py {
                 create_sys_module(module, "kframework_py.kore.syntax")?;
 
                 let py = module.py();
-                let sortvar = module.getattr("SortVar")?;
-                let sortapp = module.getattr("SortApp")?;
 
                 // Each python class has the `__annotations__` attribute set.
                 //
                 // This allows us to call the `dataclass` decorator on them.
                 let dataclass = py.import("dataclasses")?.getattr("dataclass")?;
                 let kwargs = Some([("init", false), ("frozen", true)].into_py_dict(py)?);
-                dataclass.call((sortvar,), kwargs.as_ref())?;
-                dataclass.call((sortapp,), kwargs.as_ref())?;
+
+                // Sort subclasses
+                dataclass.call((module.getattr("SortVar")?,), kwargs.as_ref())?;
+                dataclass.call((module.getattr("SortApp")?,), kwargs.as_ref())?;
+
+                // Pattern subclasses
+                for class_name in [
+                    "EVar",
+                    "SVar",
+                    "String",
+                    "App",
+                    "LeftAssoc",
+                    "RightAssoc",
+                    "Top",
+                    "Bottom",
+                    "DV",
+                    "Not",
+                    "Implies",
+                    "Iff",
+                    "And",
+                    "Or",
+                    "Exists",
+                    "Forall",
+                    "Mu",
+                    "Nu",
+                    "Ceil",
+                    "Floor",
+                    "Equals",
+                    "In",
+                    "Next",
+                    "Rewrites",
+                ] {
+                    dataclass.call((module.getattr(class_name)?,), kwargs.as_ref())?;
+                }
+
                 Ok(())
             }
 
             #[pymodule_export]
-            use kframework::bindings::python::{PySort, SortApp, SortVar};
+            use kframework::bindings::python::{
+                And, App, Bottom, Ceil, DV, EVar, Equals, Exists, Floor, Forall, Iff, Implies, In,
+                KoreString, LeftAssoc, Mu, Next, Not, Nu, Or, PyPattern, PySort, Rewrites,
+                RightAssoc, SVar, SortApp, SortVar, Top,
+            };
         }
     }
 }
