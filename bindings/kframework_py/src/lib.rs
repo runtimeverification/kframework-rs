@@ -80,14 +80,28 @@ mod kframework_py {
                     dataclass.call((module.getattr(class_name)?,), kwargs.as_ref())?;
                 }
 
+                // Symbol (standalone) + Sentence subclasses
+                dataclass.call((module.getattr("Symbol")?,), kwargs.as_ref())?;
+                for class_name in [
+                    "Import",
+                    "SortDecl",
+                    "SymbolDecl",
+                    "AliasDecl",
+                    "Axiom",
+                    "Claim",
+                ] {
+                    dataclass.call((module.getattr(class_name)?,), kwargs.as_ref())?;
+                }
+
                 Ok(())
             }
 
             #[pymodule_export]
             use kframework::bindings::python::{
-                And, App, Bottom, Ceil, DV, EVar, Equals, Exists, Floor, Forall, Iff, Implies, In,
-                KoreString, LeftAssoc, Mu, Next, Not, Nu, Or, PyPattern, PySort, Rewrites,
-                RightAssoc, SVar, SortApp, SortVar, Top,
+                AliasDecl, And, App, Axiom, Bottom, Ceil, Claim, DV, EVar, Equals, Exists, Floor,
+                Forall, Iff, Implies, Import, In, KoreString, LeftAssoc, Mu, Next, Not, Nu, Or,
+                PyPattern, PySentence, PySort, Rewrites, RightAssoc, SVar, SortApp, SortDecl,
+                SortVar, Symbol, SymbolDecl, Top,
             };
         }
     }

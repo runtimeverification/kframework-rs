@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::kore::{Id, Pattern, SetVarId, Sort, Str, SymbolId, Var};
+use crate::kore::{Id, Pattern, Sentence, SetVarId, Sort, Str, SymbolId, Var};
 use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     prelude::*,
@@ -1590,6 +1590,581 @@ impl In {
         annotations.set_item("sort", py.get_type::<PySort>())?;
         annotations.set_item("left", py.get_type::<PyPattern>())?;
         annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
+}
+
+// ==========================================
+// Sentence bindings
+// ==========================================
+
+// --- Helpers for converting between Rust and Python representations ---
+
+fn apps_to_patterns(apps: &[crate::kore::App]) -> Vec<Pattern> {
+    apps.iter().map(|a| Pattern::App(a.clone())).collect()
+}
+
+fn ids_to_sort_vars(ids: &[Id]) -> Vec<Sort> {
+    ids.iter().map(|id| Sort::Var(id.clone())).collect()
+}
+
+fn patterns_to_apps(patterns: Vec<Pattern>) -> PyResult<Vec<crate::kore::App>> {
+    patterns
+        .into_iter()
+        .map(|p| match p {
+            Pattern::App(a) => Ok(a),
+            _ => Err(PyTypeError::new_err("attrs must be App patterns")),
+        })
+        .collect()
+}
+
+fn sort_vars_to_ids(sorts: Vec<Sort>) -> PyResult<Vec<Id>> {
+    sorts
+        .into_iter()
+        .map(|s| match s {
+            Sort::Var(id) => Ok(id),
+            _ => Err(PyTypeError::new_err("vars must be SortVar")),
+        })
+        .collect()
+}
+
+// --- Symbol (standalone pyclass, not a Sentence subclass) ---
+
+#[pyclass]
+pub struct Symbol {
+    #[pyo3(get)]
+    name: String,
+    #[pyo3(get)]
+    vars: Vec<Sort>,
+}
+
+#[pymethods]
+impl Symbol {
+    #[new]
+    #[pyo3(signature = (name, vars=None))]
+    fn new_(name: String, vars: Option<Vec<Sort>>) -> PyResult<Self> {
+        SymbolId::new(name.clone()).map_err(PyValueError::new_err)?;
+        let vars = vars.unwrap_or_default();
+        for v in &vars {
+            if !matches!(v, Sort::Var(_)) {
+                return Err(PyTypeError::new_err("vars must be SortVar"));
+            }
+        }
+        Ok(Symbol { name, vars })
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("name", py.get_type::<PyString>())?;
+        annotations.set_item("vars", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+/// Helper type for storing Symbol data in Sentence subclass fields.
+/// Implements IntoPyObject/FromPyObject to convert to/from the Symbol pyclass.
+#[derive(Clone)]
+struct SymbolData {
+    name: String,
+    vars: Vec<Sort>,
+}
+
+impl<'py> IntoPyObject<'py> for SymbolData {
+    type Target = Symbol;
+    type Output = Bound<'py, Symbol>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Bound::new(
+            py,
+            Symbol {
+                name: self.name,
+                vars: self.vars,
+            },
+        )
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for SymbolData {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let sym = obj.cast::<Symbol>()?;
+        let borrow = sym.borrow();
+        Ok(SymbolData {
+            name: borrow.name.clone(),
+            vars: borrow.vars.clone(),
+        })
+    }
+}
+
+// --- PySentence (base class) ---
+
+#[pyclass(subclass, name = "Sentence")]
+pub struct PySentence {
+    wrapped: Box<Sentence>,
+}
+
+impl<'py> IntoPyObject<'py> for Sentence {
+    type Target = PySentence;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self {
+            Sentence::Import { .. } => convert::<Import, _>(py, self),
+            Sentence::Sort { .. } => convert::<SortDecl, _>(py, self),
+            Sentence::Symbol { .. } => convert::<SymbolDecl, _>(py, self),
+            Sentence::Alias { .. } => convert::<AliasDecl, _>(py, self),
+            Sentence::Axiom { .. } => convert::<Axiom, _>(py, self),
+            Sentence::Claim { .. } => convert::<Claim, _>(py, self),
+        }
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Sentence {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        Ok(obj
+            .cast::<PySentence>()
+            .map(|s| *s.borrow().wrapped.clone())?)
+    }
+}
+
+impl Wrappable<Sentence> for PySentence {
+    fn wrap(_py: Python<'_>, rust: &Sentence) -> PyResult<Self> {
+        Ok(Self {
+            wrapped: rust.clone().into(),
+        })
+    }
+}
+
+#[pymethods]
+impl PySentence {
+    #[staticmethod]
+    fn parse<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, Self>> {
+        use crate::kore::Parser;
+
+        let sentence: Sentence = Parser::new(s)
+            .and_then(|mut p| p.sentence())
+            .map_err(PyValueError::new_err)?;
+
+        sentence.into_pyobject(py)
+    }
+}
+
+// --- Import ---
+
+#[pyclass(extends = PySentence)]
+pub struct Import {
+    #[pyo3(get)]
+    module_name: String,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+}
+
+impl Wrappable<Sentence> for Import {
+    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+        match it {
+            Sentence::Import { module, attrs } => Ok(Self {
+                module_name: module.clone().value(),
+                attrs: apps_to_patterns(attrs),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Import {
+    #[new]
+    #[pyo3(signature = (module_name, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        module_name: String,
+        attrs: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PySentence>> {
+        let module = Id::new(module_name).map_err(PyValueError::new_err)?;
+        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let sentence = Sentence::Import { module, attrs };
+        sentence.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("module_name", py.get_type::<PyString>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- SortDecl ---
+
+#[pyclass(extends = PySentence)]
+pub struct SortDecl {
+    #[pyo3(get)]
+    name: String,
+    #[pyo3(get)]
+    vars: Vec<Sort>,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+    #[pyo3(get)]
+    hooked: bool,
+}
+
+impl Wrappable<Sentence> for SortDecl {
+    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+        match it {
+            Sentence::Sort {
+                id,
+                vars,
+                attrs,
+                hooked,
+            } => Ok(Self {
+                name: id.clone().value(),
+                vars: ids_to_sort_vars(vars),
+                attrs: apps_to_patterns(attrs),
+                hooked: *hooked,
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl SortDecl {
+    #[new]
+    #[pyo3(signature = (name, vars, attrs=None, *, hooked=false))]
+    fn new_(
+        py: Python<'_>,
+        name: String,
+        vars: Vec<Sort>,
+        attrs: Option<Vec<Pattern>>,
+        hooked: bool,
+    ) -> PyResult<Py<PySentence>> {
+        let id = Id::new(name).map_err(PyValueError::new_err)?;
+        let vars = sort_vars_to_ids(vars)?;
+        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let sentence = Sentence::Sort {
+            id,
+            vars,
+            attrs,
+            hooked,
+        };
+        sentence.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("name", py.get_type::<PyString>())?;
+        annotations.set_item("vars", py.get_type::<PyTuple>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        annotations.set_item("hooked", py.get_type::<PyBool>())?;
+        Ok(annotations)
+    }
+}
+
+// --- SymbolDecl ---
+
+#[pyclass(extends = PySentence)]
+pub struct SymbolDecl {
+    #[pyo3(get)]
+    symbol: SymbolData,
+    #[pyo3(get)]
+    param_sorts: Vec<Sort>,
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+    #[pyo3(get)]
+    hooked: bool,
+}
+
+impl Wrappable<Sentence> for SymbolDecl {
+    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+        match it {
+            Sentence::Symbol {
+                id,
+                vars,
+                param_sorts,
+                sort,
+                attrs,
+                hooked,
+            } => Ok(Self {
+                symbol: SymbolData {
+                    name: id.clone().value(),
+                    vars: ids_to_sort_vars(vars),
+                },
+                param_sorts: param_sorts.clone(),
+                sort: sort.clone(),
+                attrs: apps_to_patterns(attrs),
+                hooked: *hooked,
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl SymbolDecl {
+    #[new]
+    #[pyo3(signature = (symbol, param_sorts, sort, attrs=None, *, hooked=false))]
+    fn new_(
+        py: Python<'_>,
+        symbol: SymbolData,
+        param_sorts: Vec<Sort>,
+        sort: Sort,
+        attrs: Option<Vec<Pattern>>,
+        hooked: bool,
+    ) -> PyResult<Py<PySentence>> {
+        let id = SymbolId::new(symbol.name).map_err(PyValueError::new_err)?;
+        let vars = sort_vars_to_ids(symbol.vars)?;
+        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let sentence = Sentence::Symbol {
+            id,
+            vars,
+            param_sorts,
+            sort,
+            attrs,
+            hooked,
+        };
+        sentence.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("symbol", py.get_type::<Symbol>())?;
+        annotations.set_item("param_sorts", py.get_type::<PyTuple>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        annotations.set_item("hooked", py.get_type::<PyBool>())?;
+        Ok(annotations)
+    }
+}
+
+// --- AliasDecl ---
+
+#[pyclass(extends = PySentence)]
+pub struct AliasDecl {
+    #[pyo3(get)]
+    alias: SymbolData,
+    #[pyo3(get)]
+    param_sorts: Vec<Sort>,
+    #[pyo3(get)]
+    sort: Sort,
+    #[pyo3(get)]
+    left: Pattern,
+    #[pyo3(get)]
+    right: Pattern,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+}
+
+impl Wrappable<Sentence> for AliasDecl {
+    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+        match it {
+            Sentence::Alias {
+                id,
+                vars,
+                param_sorts,
+                sort,
+                left,
+                right,
+                attrs,
+            } => Ok(Self {
+                alias: SymbolData {
+                    name: id.clone().value(),
+                    vars: ids_to_sort_vars(vars),
+                },
+                param_sorts: param_sorts.clone(),
+                sort: sort.clone(),
+                left: Pattern::App(left.clone()),
+                right: *right.clone(),
+                attrs: apps_to_patterns(attrs),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl AliasDecl {
+    #[new]
+    #[pyo3(signature = (alias, param_sorts, sort, left, right, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        alias: SymbolData,
+        param_sorts: Vec<Sort>,
+        sort: Sort,
+        left: Pattern,
+        right: Pattern,
+        attrs: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PySentence>> {
+        let id = SymbolId::new(alias.name).map_err(PyValueError::new_err)?;
+        let vars = sort_vars_to_ids(alias.vars)?;
+        let left = match left {
+            Pattern::App(a) => a,
+            _ => return Err(PyTypeError::new_err("left must be an App pattern")),
+        };
+        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let sentence = Sentence::Alias {
+            id,
+            vars,
+            param_sorts,
+            sort,
+            left,
+            right: Box::new(right),
+            attrs,
+        };
+        sentence.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("alias", py.get_type::<Symbol>())?;
+        annotations.set_item("param_sorts", py.get_type::<PyTuple>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Axiom ---
+
+#[pyclass(extends = PySentence)]
+pub struct Axiom {
+    #[pyo3(get)]
+    vars: Vec<Sort>,
+    #[pyo3(get)]
+    pattern: Pattern,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+}
+
+impl Wrappable<Sentence> for Axiom {
+    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+        match it {
+            Sentence::Axiom {
+                vars,
+                pattern,
+                attrs,
+            } => Ok(Self {
+                vars: ids_to_sort_vars(vars),
+                pattern: *pattern.clone(),
+                attrs: apps_to_patterns(attrs),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Axiom {
+    #[new]
+    #[pyo3(signature = (vars, pattern, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        vars: Vec<Sort>,
+        pattern: Pattern,
+        attrs: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PySentence>> {
+        let vars = sort_vars_to_ids(vars)?;
+        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let sentence = Sentence::Axiom {
+            vars,
+            pattern: Box::new(pattern),
+            attrs,
+        };
+        sentence.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("vars", py.get_type::<PyTuple>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
+}
+
+// --- Claim ---
+
+#[pyclass(extends = PySentence)]
+pub struct Claim {
+    #[pyo3(get)]
+    vars: Vec<Sort>,
+    #[pyo3(get)]
+    pattern: Pattern,
+    #[pyo3(get)]
+    attrs: Vec<Pattern>,
+}
+
+impl Wrappable<Sentence> for Claim {
+    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+        match it {
+            Sentence::Claim {
+                vars,
+                pattern,
+                attrs,
+            } => Ok(Self {
+                vars: ids_to_sort_vars(vars),
+                pattern: *pattern.clone(),
+                attrs: apps_to_patterns(attrs),
+            }),
+            _ => Err(PyTypeError::new_err(
+                "Attempted to create wrapped value from wrong base value",
+            )),
+        }
+    }
+}
+
+#[pymethods]
+impl Claim {
+    #[new]
+    #[pyo3(signature = (vars, pattern, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        vars: Vec<Sort>,
+        pattern: Pattern,
+        attrs: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PySentence>> {
+        let vars = sort_vars_to_ids(vars)?;
+        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let sentence = Sentence::Claim {
+            vars,
+            pattern: Box::new(pattern),
+            attrs,
+        };
+        sentence.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("vars", py.get_type::<PyTuple>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
         Ok(annotations)
     }
 }

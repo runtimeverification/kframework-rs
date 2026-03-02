@@ -260,7 +260,7 @@ pub struct Module {
     pub attrs: Vec<App>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Sentence {
     Import {
         module: Id,
