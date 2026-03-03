@@ -130,6 +130,56 @@ where
 }
 
 // ==========================================
+// FromPyObject impls for kore::syntax elements
+// ==========================================
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Id {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let sortvar_try = obj.cast::<SortVar>();
+        if let Ok(sortvar) = sortvar_try {
+            let id: Id = sortvar
+                .borrow()
+                .name
+                .clone()
+                .try_into()
+                .map_err(PyValueError::new_err)?;
+            return Ok(id);
+        }
+        let s = obj.cast::<PyString>()?.to_string();
+        Id::new(s).map_err(PyValueError::new_err)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for SetVarId {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let s = obj.cast::<PyString>()?.to_string();
+        s.try_into().map_err(PyValueError::new_err)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Str {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let s = obj.cast::<PyString>()?.to_string();
+        Str::from_kore(&s).map_err(PyValueError::new_err)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for SymbolId {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let s = obj.cast::<PyString>()?.to_string();
+        s.try_into().map_err(PyValueError::new_err)
+    }
+}
+
+// ==========================================
 // Sort bindings
 // ==========================================
 
@@ -228,24 +278,25 @@ impl<'py> IntoPyObject<'py> for SortVar {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        Sort::Var(Id::new(self.name).map_err(PyValueError::new_err)?).into_pyobject(py)
+        let id = Id::new(self.name).map_err(PyValueError::new_err)?;
+        Sort::Var(id).into_pyobject(py)
     }
 }
 
 #[pymethods]
 impl SortVar {
     #[new]
-    fn new_(py: Python<'_>, name: String) -> PyResult<Py<PySort>> {
-        let id = Id::new(name).map_err(PyValueError::new_err)?;
-
-        let sort = Sort::Var(id);
+    fn new_(py: Python<'_>, name: Id) -> PyResult<Py<PySort>> {
+        let sort = Sort::Var(name);
 
         sort.into_pyobject(py).map(Bound::unbind)
     }
 
     #[pyo3(signature = (name=None))]
-    fn r#let(&self, py: Python<'_>, name: Option<String>) -> PyResult<Py<PySort>> {
-        let name = name.unwrap_or(self.name.clone());
+    fn r#let(&self, py: Python<'_>, name: Option<Id>) -> PyResult<Py<PySort>> {
+        let name = name
+            .map_or_else(|| self.name.clone().try_into(), Ok)
+            .map_err(PyValueError::new_err)?;
         Self::new_(py, name)
     }
 
@@ -282,11 +333,9 @@ impl Wrappable<Sort> for SortApp {
 impl SortApp {
     #[new]
     #[pyo3(signature = (name, sorts=None))]
-    fn new_(py: Python<'_>, name: String, sorts: Option<Vec<Sort>>) -> PyResult<Py<PySort>> {
-        let id = Id::new(name).map_err(PyValueError::new_err)?;
-
+    fn new_(py: Python<'_>, name: Id, sorts: Option<Vec<Sort>>) -> PyResult<Py<PySort>> {
         let sort = Sort::App {
-            id,
+            id: name,
             args: sorts.unwrap_or(vec![]),
         };
 
@@ -297,10 +346,12 @@ impl SortApp {
     fn r#let(
         &self,
         py: Python<'_>,
-        name: Option<String>,
+        name: Option<Id>,
         sorts: Option<Vec<Sort>>,
     ) -> PyResult<Py<PySort>> {
-        let name = name.unwrap_or_else(|| self.name.clone());
+        let name = name
+            .map_or_else(|| Id::new(self.name.clone()), Ok)
+            .map_err(PyValueError::new_err)?;
         let sorts = sorts.unwrap_or_else(|| self.sorts.clone());
         Self::new_(py, name, Some(sorts))
     }
@@ -434,9 +485,8 @@ impl Wrappable<Pattern> for EVar {
 #[pymethods]
 impl EVar {
     #[new]
-    fn new_(py: Python<'_>, name: String, sort: Sort) -> PyResult<Py<PyPattern>> {
-        let id = Id::new(name).map_err(PyValueError::new_err)?;
-        let pattern = Pattern::Var(Var { id, sort });
+    fn new_(py: Python<'_>, name: Id, sort: Sort) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::Var(Var { id: name, sort });
         pattern.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -504,9 +554,8 @@ impl Wrappable<Pattern> for PySVar {
 #[pymethods]
 impl PySVar {
     #[new]
-    fn new_(py: Python<'_>, name: String, sort: Sort) -> PyResult<Py<PyPattern>> {
-        let id = SetVarId::new(name).map_err(PyValueError::new_err)?;
-        let pattern = Pattern::SVar(crate::kore::SVar { id, sort });
+    fn new_(py: Python<'_>, name: SetVarId, sort: Sort) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::SVar(crate::kore::SVar { id: name, sort });
         pattern.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -569,9 +618,8 @@ impl Wrappable<Pattern> for KoreString {
 #[pymethods]
 impl KoreString {
     #[new]
-    fn new_(py: Python<'_>, value: String) -> PyResult<Py<PyPattern>> {
-        let s = Str::from_kore(&value).map_err(PyValueError::new_err)?;
-        let pattern = Pattern::Str(s);
+    fn new_(py: Python<'_>, value: Str) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::Str(value);
         pattern.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -580,35 +628,6 @@ impl KoreString {
         let annotations = PyDict::new(py);
         annotations.set_item("value", py.get_type::<PyString>())?;
         Ok(annotations)
-    }
-}
-
-impl<'py> IntoPyObject<'py> for Str {
-    type Target = KoreString;
-
-    type Output = Bound<'py, Self::Target>;
-
-    type Error = PyErr;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let pat = Pattern::Str(self);
-        Ok(pat.into_pyobject(py)?.cast_into()?)
-    }
-}
-
-impl<'a, 'py> FromPyObject<'a, 'py> for Str {
-    type Error = PyErr;
-
-    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
-        let var = obj.cast::<KoreString>()?.borrow();
-        let pat = *var.as_super().wrapped.clone();
-        let Pattern::Str(str) = pat else {
-            return Err(PyTypeError::new_err(format!(
-                "Error converting python object into Str: {:?}",
-                obj
-            )));
-        };
-        Ok(str)
     }
 }
 
@@ -644,11 +663,10 @@ impl App {
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
-        symbol: String,
+        symbol: SymbolId,
         sorts: Option<Vec<Sort>>,
         args: Option<Vec<Pattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let symbol = SymbolId::new(symbol).map_err(PyValueError::new_err)?;
         let pattern = Pattern::App(crate::kore::App {
             symbol,
             sorts: sorts.unwrap_or_default(),
@@ -728,11 +746,10 @@ impl LeftAssoc {
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
-        symbol: String,
+        symbol: SymbolId,
         sorts: Option<Vec<Sort>>,
         args: Option<Vec<Pattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let symbol = SymbolId::new(symbol).map_err(PyValueError::new_err)?;
         let pattern = Pattern::LeftAssoc(crate::kore::App {
             symbol,
             sorts: sorts.unwrap_or_default(),
@@ -783,11 +800,10 @@ impl RightAssoc {
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
-        symbol: String,
+        symbol: SymbolId,
         sorts: Option<Vec<Sort>>,
         args: Option<Vec<Pattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let symbol = SymbolId::new(symbol).map_err(PyValueError::new_err)?;
         let pattern = Pattern::RightAssoc(crate::kore::App {
             symbol,
             sorts: sorts.unwrap_or_default(),
@@ -900,12 +916,8 @@ impl Wrappable<Pattern> for DV {
 #[pymethods]
 impl DV {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, value: String) -> PyResult<Py<PyPattern>> {
-        let str_value = Str::from_kore(&value).map_err(PyValueError::new_err)?;
-        let pattern = Pattern::Dv {
-            sort,
-            value: str_value,
-        };
+    fn new_(py: Python<'_>, sort: Sort, value: Str) -> PyResult<Py<PyPattern>> {
+        let pattern = Pattern::Dv { sort, value };
         pattern.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -1665,10 +1677,11 @@ pub struct Symbol {
 impl Symbol {
     #[new]
     #[pyo3(signature = (name, vars=None))]
-    fn new_(name: String, vars: Option<Vec<SortVar>>) -> PyResult<Self> {
-        SymbolId::new(name.clone()).map_err(PyValueError::new_err)?;
-        let vars = vars.unwrap_or_default();
-        Ok(Symbol { name, vars })
+    fn new_(name: SymbolId, vars: Option<Vec<SortVar>>) -> PyResult<Self> {
+        Ok(Symbol {
+            name: name.value(),
+            vars: vars.unwrap_or_default(),
+        })
     }
 
     #[classattr]
@@ -1767,12 +1780,13 @@ impl Import {
     #[pyo3(signature = (module_name, attrs=None))]
     fn new_(
         py: Python<'_>,
-        module_name: String,
+        module_name: Id,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
-        let module = Id::new(module_name).map_err(PyValueError::new_err)?;
-        let attrs = attrs.unwrap_or_default();
-        let sentence = Sentence::Import { module, attrs };
+        let sentence = Sentence::Import {
+            module: module_name,
+            attrs: attrs.unwrap_or_default(),
+        };
         sentence.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -1830,20 +1844,16 @@ impl SortDecl {
     #[pyo3(signature = (name, vars, attrs=None, *, hooked=false))]
     fn new_(
         py: Python<'_>,
-        name: String,
-        vars: Vec<SortVar>,
+        name: Id,
+        vars: Vec<Id>,
         attrs: Option<Vec<crate::kore::App>>,
         hooked: bool,
     ) -> PyResult<Py<PySentence>> {
-        let id = Id::new(name).map_err(PyValueError::new_err)?;
-        let vars = vars
-            .into_iter()
-            .map(|v| Id::new(v.name))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(PyValueError::new_err)?;
+        //let id = Id::new(name).map_err(PyValueError::new_err)?;
+        //let vars = vars.into_iter().map(|v| v.name).collect::<Vec<_>>();
         let attrs = attrs.unwrap_or_default();
         let sentence = Sentence::Sort {
-            id,
+            id: name,
             vars,
             attrs,
             hooked,
@@ -1921,20 +1931,20 @@ impl SymbolDecl {
         attrs: Option<Vec<crate::kore::App>>,
         hooked: bool,
     ) -> PyResult<Py<PySentence>> {
-        let id = SymbolId::new(symbol.name).map_err(PyValueError::new_err)?;
-        let vars = symbol
+        let id: SymbolId = symbol.name.try_into().map_err(PyValueError::new_err)?;
+        let vars: Vec<Id> = symbol
             .vars
             .into_iter()
-            .map(|v| Id::new(v.name))
-            .collect::<Result<Vec<_>, _>>()
+            .map(|v| v.name.try_into())
+            .collect::<Result<_, _>>()
             .map_err(PyValueError::new_err)?;
-        let attrs = attrs.unwrap_or_default();
+
         let sentence = Sentence::Symbol {
             id,
             vars,
             param_sorts,
             sort,
-            attrs,
+            attrs: attrs.unwrap_or_default(),
             hooked,
         };
         sentence.into_pyobject(py).map(Bound::unbind)
@@ -2016,13 +2026,14 @@ impl AliasDecl {
         right: Pattern,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
-        let id = SymbolId::new(alias.name).map_err(PyValueError::new_err)?;
-        let vars = alias
+        let id: SymbolId = alias.name.try_into().map_err(PyValueError::new_err)?;
+        let vars: Vec<Id> = alias
             .vars
             .into_iter()
-            .map(|v| Id::new(v.name))
-            .collect::<Result<Vec<_>, _>>()
+            .map(|v| v.name.try_into())
+            .collect::<Result<_, _>>()
             .map_err(PyValueError::new_err)?;
+
         let sentence = Sentence::Alias {
             id,
             vars,
@@ -2089,20 +2100,14 @@ impl Axiom {
     #[pyo3(signature = (vars, pattern, attrs=None))]
     fn new_(
         py: Python<'_>,
-        vars: Vec<SortVar>,
+        vars: Vec<Id>,
         pattern: Pattern,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
-        let vars = vars
-            .into_iter()
-            .map(|v| Id::new(v.name))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(PyValueError::new_err)?;
-        let attrs = attrs.unwrap_or_default();
         let sentence = Sentence::Axiom {
             vars,
             pattern: Box::new(pattern),
-            attrs,
+            attrs: attrs.unwrap_or_default(),
         };
         sentence.into_pyobject(py).map(Bound::unbind)
     }
@@ -2158,22 +2163,14 @@ impl Claim {
     #[pyo3(signature = (vars, pattern, attrs=None))]
     fn new_(
         py: Python<'_>,
-        vars: Vec<SortVar>,
+        vars: Vec<Id>,
         pattern: Pattern,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
-        let vars = vars
-            .into_iter()
-            .map(|v| Id::new(v.name))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(PyValueError::new_err)?;
-        let pattern = Box::new(pattern);
-        let attrs = attrs.unwrap_or_default();
-
         let sentence = Sentence::Claim {
             vars,
-            pattern,
-            attrs,
+            pattern: Box::new(pattern),
+            attrs: attrs.unwrap_or_default(),
         };
 
         sentence.into_pyobject(py).map(Bound::unbind)
@@ -2242,13 +2239,12 @@ impl KoreModule {
     #[pyo3(signature = (name, sentences=None, attrs=None))]
     fn new_(
         py: Python<'_>,
-        name: String,
+        name: Id,
         sentences: Option<Vec<Sentence>>,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<KoreModule>> {
-        let id = Id::new(name).map_err(PyValueError::new_err)?;
         let module = crate::kore::Module {
-            id,
+            id: name,
             sentences: sentences.unwrap_or_default(),
             attrs: attrs.unwrap_or_default(),
         };
