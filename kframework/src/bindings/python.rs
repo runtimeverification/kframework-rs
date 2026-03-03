@@ -201,7 +201,8 @@ impl PySort {
     }
 }
 
-#[pyclass(extends = PySort)]
+#[pyclass(extends = PySort, from_py_object)]
+#[derive(Clone)]
 pub struct SortVar {
     #[pyo3(get)]
     name: String,
@@ -219,11 +220,24 @@ impl Wrappable<Sort> for SortVar {
     }
 }
 
+impl<'py> IntoPyObject<'py> for SortVar {
+    type Target = PySort;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Sort::Var(Id::new(self.name).map_err(PyValueError::new_err)?).into_pyobject(py)
+    }
+}
+
 #[pymethods]
 impl SortVar {
     #[new]
     fn new_(py: Python<'_>, name: String) -> PyResult<Py<PySort>> {
         let id = Id::new(name).map_err(PyValueError::new_err)?;
+
         let sort = Sort::Var(id);
 
         sort.into_pyobject(py).map(Bound::unbind)
@@ -1636,36 +1650,6 @@ impl In {
 // Sentence bindings
 // ==========================================
 
-// --- Helpers for converting between Rust and Python representations ---
-
-fn apps_to_patterns(apps: &[crate::kore::App]) -> Vec<Pattern> {
-    apps.iter().map(|a| Pattern::App(a.clone())).collect()
-}
-
-fn ids_to_sort_vars(ids: &[Id]) -> Vec<Sort> {
-    ids.iter().map(|id| Sort::Var(id.clone())).collect()
-}
-
-fn patterns_to_apps(patterns: Vec<Pattern>) -> PyResult<Vec<crate::kore::App>> {
-    patterns
-        .into_iter()
-        .map(|p| match p {
-            Pattern::App(a) => Ok(a),
-            _ => Err(PyTypeError::new_err("attrs must be App patterns")),
-        })
-        .collect()
-}
-
-fn sort_vars_to_ids(sorts: Vec<Sort>) -> PyResult<Vec<Id>> {
-    sorts
-        .into_iter()
-        .map(|s| match s {
-            Sort::Var(id) => Ok(id),
-            _ => Err(PyTypeError::new_err("vars must be SortVar")),
-        })
-        .collect()
-}
-
 // --- Symbol (standalone pyclass, not a Sentence subclass) ---
 
 #[pyclass(from_py_object)]
@@ -1674,21 +1658,16 @@ pub struct Symbol {
     #[pyo3(get)]
     name: String,
     #[pyo3(get)]
-    vars: Vec<Sort>,
+    vars: Vec<SortVar>,
 }
 
 #[pymethods]
 impl Symbol {
     #[new]
     #[pyo3(signature = (name, vars=None))]
-    fn new_(name: String, vars: Option<Vec<Sort>>) -> PyResult<Self> {
+    fn new_(name: String, vars: Option<Vec<SortVar>>) -> PyResult<Self> {
         SymbolId::new(name.clone()).map_err(PyValueError::new_err)?;
         let vars = vars.unwrap_or_default();
-        for v in &vars {
-            if !matches!(v, Sort::Var(_)) {
-                return Err(PyTypeError::new_err("vars must be SortVar"));
-            }
-        }
         Ok(Symbol { name, vars })
     }
 
@@ -1766,7 +1745,7 @@ pub struct Import {
     #[pyo3(get)]
     module_name: String,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
 }
 
 impl Wrappable<Sentence> for Import {
@@ -1774,7 +1753,7 @@ impl Wrappable<Sentence> for Import {
         if let Sentence::Import { module, attrs } = it {
             Ok(Self {
                 module_name: module.clone().value(),
-                attrs: apps_to_patterns(attrs),
+                attrs: attrs.to_vec(),
             })
         } else {
             Self::error(it)
@@ -1789,10 +1768,10 @@ impl Import {
     fn new_(
         py: Python<'_>,
         module_name: String,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
         let module = Id::new(module_name).map_err(PyValueError::new_err)?;
-        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let attrs = attrs.unwrap_or_default();
         let sentence = Sentence::Import { module, attrs };
         sentence.into_pyobject(py).map(Bound::unbind)
     }
@@ -1813,9 +1792,9 @@ pub struct SortDecl {
     #[pyo3(get)]
     name: String,
     #[pyo3(get)]
-    vars: Vec<Sort>,
+    vars: Vec<SortVar>,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
     #[pyo3(get)]
     hooked: bool,
 }
@@ -1831,8 +1810,12 @@ impl Wrappable<Sentence> for SortDecl {
         {
             Ok(Self {
                 name: id.clone().value(),
-                vars: ids_to_sort_vars(vars),
-                attrs: apps_to_patterns(attrs),
+                vars: vars
+                    .iter()
+                    .cloned()
+                    .map(|id| SortVar { name: id.value() })
+                    .collect(),
+                attrs: attrs.to_vec(),
                 hooked: *hooked,
             })
         } else {
@@ -1848,13 +1831,17 @@ impl SortDecl {
     fn new_(
         py: Python<'_>,
         name: String,
-        vars: Vec<Sort>,
-        attrs: Option<Vec<Pattern>>,
+        vars: Vec<SortVar>,
+        attrs: Option<Vec<crate::kore::App>>,
         hooked: bool,
     ) -> PyResult<Py<PySentence>> {
         let id = Id::new(name).map_err(PyValueError::new_err)?;
-        let vars = sort_vars_to_ids(vars)?;
-        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let vars = vars
+            .into_iter()
+            .map(|v| Id::new(v.name))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(PyValueError::new_err)?;
+        let attrs = attrs.unwrap_or_default();
         let sentence = Sentence::Sort {
             id,
             vars,
@@ -1886,7 +1873,7 @@ pub struct SymbolDecl {
     #[pyo3(get)]
     sort: Sort,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
     #[pyo3(get)]
     hooked: bool,
 }
@@ -1905,11 +1892,15 @@ impl Wrappable<Sentence> for SymbolDecl {
             Ok(Self {
                 symbol: Symbol {
                     name: id.clone().value(),
-                    vars: ids_to_sort_vars(vars),
+                    vars: vars
+                        .iter()
+                        .cloned()
+                        .map(|id| SortVar { name: id.value() })
+                        .collect(),
                 },
                 param_sorts: param_sorts.clone(),
                 sort: sort.clone(),
-                attrs: apps_to_patterns(attrs),
+                attrs: attrs.to_vec(),
                 hooked: *hooked,
             })
         } else {
@@ -1927,12 +1918,17 @@ impl SymbolDecl {
         symbol: Symbol,
         param_sorts: Vec<Sort>,
         sort: Sort,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
         hooked: bool,
     ) -> PyResult<Py<PySentence>> {
         let id = SymbolId::new(symbol.name).map_err(PyValueError::new_err)?;
-        let vars = sort_vars_to_ids(symbol.vars)?;
-        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let vars = symbol
+            .vars
+            .into_iter()
+            .map(|v| Id::new(v.name))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(PyValueError::new_err)?;
+        let attrs = attrs.unwrap_or_default();
         let sentence = Sentence::Symbol {
             id,
             vars,
@@ -1967,11 +1963,11 @@ pub struct AliasDecl {
     #[pyo3(get)]
     sort: Sort,
     #[pyo3(get)]
-    left: Pattern,
+    left: crate::kore::App,
     #[pyo3(get)]
     right: Pattern,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
 }
 
 impl Wrappable<Sentence> for AliasDecl {
@@ -1989,13 +1985,17 @@ impl Wrappable<Sentence> for AliasDecl {
             Ok(Self {
                 alias: Symbol {
                     name: id.clone().value(),
-                    vars: ids_to_sort_vars(vars),
+                    vars: vars
+                        .iter()
+                        .cloned()
+                        .map(|id| SortVar { name: id.value() })
+                        .collect(),
                 },
                 param_sorts: param_sorts.clone(),
                 sort: sort.clone(),
-                left: Pattern::App(left.clone()),
+                left: left.clone(),
                 right: *right.clone(),
-                attrs: apps_to_patterns(attrs),
+                attrs: attrs.to_vec(),
             })
         } else {
             Self::error(it)
@@ -2012,17 +2012,17 @@ impl AliasDecl {
         alias: Symbol,
         param_sorts: Vec<Sort>,
         sort: Sort,
-        left: Pattern,
+        left: crate::kore::App,
         right: Pattern,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
         let id = SymbolId::new(alias.name).map_err(PyValueError::new_err)?;
-        let vars = sort_vars_to_ids(alias.vars)?;
-        let left = match left {
-            Pattern::App(a) => a,
-            _ => return Err(PyTypeError::new_err("left must be an App pattern")),
-        };
-        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let vars = alias
+            .vars
+            .into_iter()
+            .map(|v| Id::new(v.name))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(PyValueError::new_err)?;
         let sentence = Sentence::Alias {
             id,
             vars,
@@ -2030,7 +2030,7 @@ impl AliasDecl {
             sort,
             left,
             right: Box::new(right),
-            attrs,
+            attrs: attrs.unwrap_or_default(),
         };
         sentence.into_pyobject(py).map(Bound::unbind)
     }
@@ -2053,11 +2053,11 @@ impl AliasDecl {
 #[pyclass(extends = PySentence)]
 pub struct Axiom {
     #[pyo3(get)]
-    vars: Vec<Sort>,
+    vars: Vec<SortVar>,
     #[pyo3(get)]
     pattern: Pattern,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
 }
 
 impl Wrappable<Sentence> for Axiom {
@@ -2069,9 +2069,13 @@ impl Wrappable<Sentence> for Axiom {
         } = it
         {
             Ok(Self {
-                vars: ids_to_sort_vars(vars),
+                vars: vars
+                    .iter()
+                    .cloned()
+                    .map(|id| SortVar { name: id.value() })
+                    .collect(),
                 pattern: *pattern.clone(),
-                attrs: apps_to_patterns(attrs),
+                attrs: attrs.to_vec(),
             })
         } else {
             Self::error(it)
@@ -2085,12 +2089,16 @@ impl Axiom {
     #[pyo3(signature = (vars, pattern, attrs=None))]
     fn new_(
         py: Python<'_>,
-        vars: Vec<Sort>,
+        vars: Vec<SortVar>,
         pattern: Pattern,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
-        let vars = sort_vars_to_ids(vars)?;
-        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let vars = vars
+            .into_iter()
+            .map(|v| Id::new(v.name))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(PyValueError::new_err)?;
+        let attrs = attrs.unwrap_or_default();
         let sentence = Sentence::Axiom {
             vars,
             pattern: Box::new(pattern),
@@ -2114,11 +2122,11 @@ impl Axiom {
 #[pyclass(extends = PySentence)]
 pub struct Claim {
     #[pyo3(get)]
-    vars: Vec<Sort>,
+    vars: Vec<SortVar>,
     #[pyo3(get)]
     pattern: Pattern,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
 }
 
 impl Wrappable<Sentence> for Claim {
@@ -2130,9 +2138,13 @@ impl Wrappable<Sentence> for Claim {
         } = it
         {
             Ok(Self {
-                vars: ids_to_sort_vars(vars),
+                vars: vars
+                    .iter()
+                    .cloned()
+                    .map(|id| SortVar { name: id.value() })
+                    .collect(),
                 pattern: *pattern.clone(),
-                attrs: apps_to_patterns(attrs),
+                attrs: attrs.to_vec(),
             })
         } else {
             Self::error(it)
@@ -2146,17 +2158,24 @@ impl Claim {
     #[pyo3(signature = (vars, pattern, attrs=None))]
     fn new_(
         py: Python<'_>,
-        vars: Vec<Sort>,
+        vars: Vec<SortVar>,
         pattern: Pattern,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
-        let vars = sort_vars_to_ids(vars)?;
-        let attrs = patterns_to_apps(attrs.unwrap_or_default())?;
+        let vars = vars
+            .into_iter()
+            .map(|v| Id::new(v.name))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(PyValueError::new_err)?;
+        let pattern = Box::new(pattern);
+        let attrs = attrs.unwrap_or_default();
+
         let sentence = Sentence::Claim {
             vars,
-            pattern: Box::new(pattern),
+            pattern,
             attrs,
         };
+
         sentence.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -2181,7 +2200,7 @@ pub struct KoreModule {
     #[pyo3(get)]
     sentences: Vec<Sentence>,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
 }
 
 impl<'py> IntoPyObject<'py> for crate::kore::Module {
@@ -2195,7 +2214,7 @@ impl<'py> IntoPyObject<'py> for crate::kore::Module {
             KoreModule {
                 name: self.id.value(),
                 sentences: self.sentences,
-                attrs: apps_to_patterns(&self.attrs),
+                attrs: self.attrs,
             },
         )
     }
@@ -2208,7 +2227,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::Module {
         let m = obj.cast::<KoreModule>()?;
         let borrow = m.borrow();
         let id = Id::new(borrow.name.clone()).map_err(PyValueError::new_err)?;
-        let attrs = patterns_to_apps(borrow.attrs.clone())?;
+        let attrs = borrow.attrs.clone();
         Ok(crate::kore::Module {
             id,
             sentences: borrow.sentences.clone(),
@@ -2225,14 +2244,13 @@ impl KoreModule {
         py: Python<'_>,
         name: String,
         sentences: Option<Vec<Sentence>>,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<KoreModule>> {
-        let id = Id::new(name.clone()).map_err(PyValueError::new_err)?;
-        let attrs_apps = patterns_to_apps(attrs.unwrap_or_default())?;
+        let id = Id::new(name).map_err(PyValueError::new_err)?;
         let module = crate::kore::Module {
             id,
             sentences: sentences.unwrap_or_default(),
-            attrs: attrs_apps,
+            attrs: attrs.unwrap_or_default(),
         };
         module.into_pyobject(py).map(Bound::unbind)
     }
@@ -2267,7 +2285,7 @@ pub struct KoreDefinition {
     #[pyo3(get)]
     modules: Vec<crate::kore::Module>,
     #[pyo3(get)]
-    attrs: Vec<Pattern>,
+    attrs: Vec<crate::kore::App>,
 }
 
 impl<'py> IntoPyObject<'py> for crate::kore::Definition {
@@ -2280,7 +2298,7 @@ impl<'py> IntoPyObject<'py> for crate::kore::Definition {
             py,
             KoreDefinition {
                 modules: self.modules,
-                attrs: apps_to_patterns(&self.attrs),
+                attrs: self.attrs,
             },
         )
     }
@@ -2292,7 +2310,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::Definition {
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let d = obj.cast::<KoreDefinition>()?;
         let borrow = d.borrow();
-        let attrs = patterns_to_apps(borrow.attrs.clone())?;
+        let attrs = borrow.attrs.clone();
         Ok(crate::kore::Definition {
             modules: borrow.modules.clone(),
             attrs,
@@ -2307,12 +2325,11 @@ impl KoreDefinition {
     fn new_(
         py: Python<'_>,
         modules: Option<Vec<crate::kore::Module>>,
-        attrs: Option<Vec<Pattern>>,
+        attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<KoreDefinition>> {
-        let attrs_apps = patterns_to_apps(attrs.unwrap_or_default())?;
         let definition = crate::kore::Definition {
             modules: modules.unwrap_or_default(),
-            attrs: attrs_apps,
+            attrs: attrs.unwrap_or_default(),
         };
         definition.into_pyobject(py).map(Bound::unbind)
     }
