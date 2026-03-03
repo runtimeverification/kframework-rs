@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::kore::{Id, Pattern, Sentence, SetVarId, Sort, Str, SymbolId, Var};
+use crate::kore::{Id, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var};
 use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     prelude::*,
@@ -319,7 +319,7 @@ impl<'py> IntoPyObject<'py> for Pattern {
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
             Pattern::Var(_) => convert::<EVar, _>(py, self),
-            Pattern::SVar(_) => convert::<SVar, _>(py, self),
+            Pattern::SVar(_) => convert::<PySVar, _>(py, self),
             Pattern::Str(_) => convert::<KoreString, _>(py, self),
             Pattern::App(_) => convert::<App, _>(py, self),
             Pattern::LeftAssoc(_) => convert::<LeftAssoc, _>(py, self),
@@ -435,17 +435,46 @@ impl EVar {
     }
 }
 
+impl<'py> IntoPyObject<'py> for Var {
+    type Target = EVar;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::Var(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Var {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<EVar>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::Var(var) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into Var: {:?}",
+                obj
+            )));
+        };
+        Ok(var)
+    }
+}
+
 // --- SVar ---
 
 #[pyclass(extends = PyPattern, name = "SVar")]
-pub struct SVar {
+pub struct PySVar {
     #[pyo3(get)]
     name: String,
     #[pyo3(get)]
     sort: Sort,
 }
 
-impl Wrappable<Pattern> for SVar {
+impl Wrappable<Pattern> for PySVar {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
         if let Pattern::SVar(svar) = it {
             Ok(Self {
@@ -459,7 +488,7 @@ impl Wrappable<Pattern> for SVar {
 }
 
 #[pymethods]
-impl SVar {
+impl PySVar {
     #[new]
     fn new_(py: Python<'_>, name: String, sort: Sort) -> PyResult<Py<PyPattern>> {
         let id = SetVarId::new(name).map_err(PyValueError::new_err)?;
@@ -473,6 +502,35 @@ impl SVar {
         annotations.set_item("name", py.get_type::<PyString>())?;
         annotations.set_item("sort", py.get_type::<PySort>())?;
         Ok(annotations)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for SVar {
+    type Target = PySVar;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::SVar(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for SVar {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<PySVar>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::SVar(svar) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into SVar, {:?}",
+                obj
+            )));
+        };
+        Ok(svar)
     }
 }
 
@@ -508,6 +566,35 @@ impl KoreString {
         let annotations = PyDict::new(py);
         annotations.set_item("value", py.get_type::<PyString>())?;
         Ok(annotations)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for Str {
+    type Target = KoreString;
+
+    type Output = Bound<'py, Self::Target>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::Str(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Str {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<KoreString>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::Str(str) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into Str: {:?}",
+                obj
+            )));
+        };
+        Ok(str)
     }
 }
 
@@ -563,6 +650,35 @@ impl App {
         annotations.set_item("sorts", py.get_type::<PyTuple>())?;
         annotations.set_item("args", py.get_type::<PyTuple>())?;
         Ok(annotations)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for crate::kore::App {
+    type Target = App;
+
+    type Output = Bound<'py, App>;
+
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::App(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::App {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<App>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::App(app) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into App: {:?}",
+                obj
+            )));
+        };
+        Ok(app)
     }
 }
 
@@ -1105,7 +1221,7 @@ pub struct Exists {
     #[pyo3(get)]
     sort: Sort,
     #[pyo3(get)]
-    var: Pattern,
+    var: Var,
     #[pyo3(get)]
     pattern: Pattern,
 }
@@ -1115,7 +1231,7 @@ impl Wrappable<Pattern> for Exists {
         if let Pattern::Exists { sort, var, op } = it {
             Ok(Self {
                 sort: sort.clone(),
-                var: Pattern::Var(var.clone()),
+                var: var.clone(),
                 pattern: *op.clone(),
             })
         } else {
@@ -1127,11 +1243,7 @@ impl Wrappable<Pattern> for Exists {
 #[pymethods]
 impl Exists {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
-        let var = match var {
-            Pattern::Var(v) => v,
-            _ => return Err(PyTypeError::new_err("var must be an EVar pattern")),
-        };
+    fn new_(py: Python<'_>, sort: Sort, var: Var, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Exists {
             sort,
             var,
@@ -1157,7 +1269,7 @@ pub struct Forall {
     #[pyo3(get)]
     sort: Sort,
     #[pyo3(get)]
-    var: Pattern,
+    var: Var,
     #[pyo3(get)]
     pattern: Pattern,
 }
@@ -1167,7 +1279,7 @@ impl Wrappable<Pattern> for Forall {
         if let Pattern::Forall { sort, var, op } = it {
             Ok(Self {
                 sort: sort.clone(),
-                var: Pattern::Var(var.clone()),
+                var: var.clone(),
                 pattern: *op.clone(),
             })
         } else {
@@ -1179,11 +1291,7 @@ impl Wrappable<Pattern> for Forall {
 #[pymethods]
 impl Forall {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
-        let var = match var {
-            Pattern::Var(v) => v,
-            _ => return Err(PyTypeError::new_err("var must be an EVar pattern")),
-        };
+    fn new_(py: Python<'_>, sort: Sort, var: Var, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Forall {
             sort,
             var,
@@ -1207,7 +1315,7 @@ impl Forall {
 #[pyclass(extends = PyPattern)]
 pub struct Mu {
     #[pyo3(get)]
-    var: Pattern,
+    var: SVar,
     #[pyo3(get)]
     pattern: Pattern,
 }
@@ -1216,7 +1324,7 @@ impl Wrappable<Pattern> for Mu {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
         if let Pattern::Mu { var, op } = it {
             Ok(Self {
-                var: Pattern::SVar(var.clone()),
+                var: var.clone(),
                 pattern: *op.clone(),
             })
         } else {
@@ -1228,11 +1336,7 @@ impl Wrappable<Pattern> for Mu {
 #[pymethods]
 impl Mu {
     #[new]
-    fn new_(py: Python<'_>, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
-        let var = match var {
-            Pattern::SVar(v) => v,
-            _ => return Err(PyTypeError::new_err("var must be an SVar pattern")),
-        };
+    fn new_(py: Python<'_>, var: SVar, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Mu {
             var,
             op: Box::new(pattern),
@@ -1254,7 +1358,7 @@ impl Mu {
 #[pyclass(extends = PyPattern)]
 pub struct Nu {
     #[pyo3(get)]
-    var: Pattern,
+    var: SVar,
     #[pyo3(get)]
     pattern: Pattern,
 }
@@ -1263,7 +1367,7 @@ impl Wrappable<Pattern> for Nu {
     fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
         if let Pattern::Nu { var, op } = it {
             Ok(Self {
-                var: Pattern::SVar(var.clone()),
+                var: var.clone(),
                 pattern: *op.clone(),
             })
         } else {
@@ -1275,11 +1379,7 @@ impl Wrappable<Pattern> for Nu {
 #[pymethods]
 impl Nu {
     #[new]
-    fn new_(py: Python<'_>, var: Pattern, pattern: Pattern) -> PyResult<Py<PyPattern>> {
-        let var = match var {
-            Pattern::SVar(v) => v,
-            _ => return Err(PyTypeError::new_err("var must be an SVar pattern")),
-        };
+    fn new_(py: Python<'_>, var: SVar, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         let pat = Pattern::Nu {
             var,
             op: Box::new(pattern),
