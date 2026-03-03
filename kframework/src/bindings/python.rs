@@ -498,7 +498,8 @@ impl Wrappable<Pattern> for KoreString {
 impl KoreString {
     #[new]
     fn new_(py: Python<'_>, value: String) -> PyResult<Py<PyPattern>> {
-        let pattern = Pattern::Str(Str(value));
+        let s = Str::from_kore(&value).map_err(PyValueError::new_err)?;
+        let pattern = Pattern::Str(s);
         pattern.into_pyobject(py).map(Bound::unbind)
     }
 
@@ -750,7 +751,7 @@ pub struct DV {
     #[pyo3(get)]
     sort: Sort,
     #[pyo3(get)]
-    value: Pattern,
+    value: String,
 }
 
 impl Wrappable<Pattern> for DV {
@@ -758,7 +759,7 @@ impl Wrappable<Pattern> for DV {
         if let Pattern::Dv { sort, value } = it {
             Ok(Self {
                 sort: sort.clone(),
-                value: Pattern::Str(value.clone()),
+                value: value.clone().0,
             })
         } else {
             Self::error(it)
@@ -769,11 +770,8 @@ impl Wrappable<Pattern> for DV {
 #[pymethods]
 impl DV {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, value: Pattern) -> PyResult<Py<PyPattern>> {
-        let str_value = match value {
-            Pattern::Str(s) => s,
-            _ => return Err(PyTypeError::new_err("value must be a String pattern")),
-        };
+    fn new_(py: Python<'_>, sort: Sort, value: String) -> PyResult<Py<PyPattern>> {
+        let str_value = Str::from_kore(&value).map_err(PyValueError::new_err)?;
         let pattern = Pattern::Dv {
             sort,
             value: str_value,
