@@ -279,10 +279,9 @@ impl PySort {
     }
 }
 
-#[pyclass(extends = PySort, from_py_object)]
+#[pyclass(extends = PySort, from_py_object, get_all)]
 #[derive(Clone)]
 pub struct SortVar {
-    #[pyo3(get)]
     name: String,
 }
 
@@ -337,11 +336,9 @@ impl SortVar {
     }
 }
 
-#[pyclass(extends = PySort)]
+#[pyclass(extends = PySort, get_all)]
 pub struct SortApp {
-    #[pyo3(get)]
     name: String,
-    #[pyo3(get)]
     sorts: Vec<Sort>,
 }
 
@@ -509,11 +506,9 @@ impl PyPattern {
 
 // --- EVar ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct EVar {
-    #[pyo3(get)]
     name: String,
-    #[pyo3(get)]
     sort: Sort,
 }
 
@@ -600,11 +595,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Var {
 
 // --- SVar ---
 
-#[pyclass(extends = PyPattern, name = "SVar")]
+#[pyclass(extends = PyPattern, name = "SVar", get_all)]
 pub struct PySVar {
-    #[pyo3(get)]
     name: String,
-    #[pyo3(get)]
     sort: Sort,
 }
 
@@ -691,9 +684,8 @@ impl<'a, 'py> FromPyObject<'a, 'py> for SVar {
 
 // --- String (KoreString) ---
 
-#[pyclass(extends = PyPattern, name = "String")]
+#[pyclass(extends = PyPattern, name = "String", get_all)]
 pub struct KoreString {
-    #[pyo3(get)]
     value: String,
 }
 
@@ -736,13 +728,10 @@ impl KoreString {
 
 // --- App ---
 
-#[pyclass(extends = PyPattern, name = "App")]
+#[pyclass(extends = PyPattern, name = "App", get_all)]
 pub struct App {
-    #[pyo3(get)]
     symbol: String,
-    #[pyo3(get)]
     sorts: Vec<Sort>,
-    #[pyo3(get)]
     args: Vec<Pattern>,
 }
 
@@ -839,13 +828,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::App {
 
 // --- LeftAssoc ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct LeftAssoc {
-    #[pyo3(get)]
     symbol: String,
-    #[pyo3(get)]
     sorts: Vec<Sort>,
-    #[pyo3(get)]
     args: Vec<Pattern>,
 }
 
@@ -915,13 +901,10 @@ impl LeftAssoc {
 
 // --- RightAssoc ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct RightAssoc {
-    #[pyo3(get)]
     symbol: String,
-    #[pyo3(get)]
     sorts: Vec<Sort>,
-    #[pyo3(get)]
     args: Vec<Pattern>,
 }
 
@@ -991,9 +974,8 @@ impl RightAssoc {
 
 // --- Top ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Top {
-    #[pyo3(get)]
     sort: Sort,
 }
 
@@ -1035,9 +1017,8 @@ impl Top {
 
 // --- Bottom ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Bottom {
-    #[pyo3(get)]
     sort: Sort,
 }
 
@@ -1079,11 +1060,9 @@ impl Bottom {
 
 // --- DV ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct DV {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     value: String,
 }
 
@@ -1138,11 +1117,9 @@ impl DV {
 
 // --- Not ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Not {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1188,11 +1165,9 @@ impl Not {
 
 // --- Next ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Next {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1238,13 +1213,10 @@ impl Next {
 
 // --- Implies ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Implies {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     left: Pattern,
-    #[pyo3(get)]
     right: Pattern,
 }
 
@@ -1298,13 +1270,10 @@ impl Implies {
 
 // --- Iff ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Iff {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     left: Pattern,
-    #[pyo3(get)]
     right: Pattern,
 }
 
@@ -1358,13 +1327,10 @@ impl Iff {
 
 // --- Rewrites ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Rewrites {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     left: Pattern,
-    #[pyo3(get)]
     right: Pattern,
 }
 
@@ -1418,11 +1384,9 @@ impl Rewrites {
 
 // --- And ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct And {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     ops: Vec<Pattern>,
 }
 
@@ -1468,11 +1432,9 @@ impl And {
 
 // --- Or ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Or {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     ops: Vec<Pattern>,
 }
 
@@ -1518,13 +1480,10 @@ impl Or {
 
 // --- Exists ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Exists {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     var: Var,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1578,13 +1537,10 @@ impl Exists {
 
 // --- Forall ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Forall {
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     var: Var,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1638,11 +1594,9 @@ impl Forall {
 
 // --- Mu ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Mu {
-    #[pyo3(get)]
     var: SVar,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1688,11 +1642,9 @@ impl Mu {
 
 // --- Nu ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Nu {
-    #[pyo3(get)]
     var: SVar,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1738,13 +1690,10 @@ impl Nu {
 
 // --- Ceil ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Ceil {
-    #[pyo3(get)]
     op_sort: Sort,
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1807,13 +1756,10 @@ impl Ceil {
 
 // --- Floor ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Floor {
-    #[pyo3(get)]
     op_sort: Sort,
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     pattern: Pattern,
 }
 
@@ -1876,15 +1822,11 @@ impl Floor {
 
 // --- Equals ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct Equals {
-    #[pyo3(get)]
     op_sort: Sort,
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     left: Pattern,
-    #[pyo3(get)]
     right: Pattern,
 }
 
@@ -1958,15 +1900,11 @@ impl Equals {
 
 // --- In ---
 
-#[pyclass(extends = PyPattern)]
+#[pyclass(extends = PyPattern, get_all)]
 pub struct In {
-    #[pyo3(get)]
     op_sort: Sort,
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     left: Pattern,
-    #[pyo3(get)]
     right: Pattern,
 }
 
@@ -2044,11 +1982,9 @@ impl In {
 
 // --- Symbol (standalone pyclass, not a Sentence subclass) ---
 
-#[pyclass]
+#[pyclass(get_all)]
 pub struct Symbol {
-    #[pyo3(get)]
     name: String,
-    #[pyo3(get)]
     vars: Vec<Py<SortVar>>,
 }
 
@@ -2146,11 +2082,9 @@ impl PySentence {
 
 // --- Import ---
 
-#[pyclass(extends = PySentence)]
+#[pyclass(extends = PySentence, get_all)]
 pub struct Import {
-    #[pyo3(get)]
     module_name: String,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
 }
 
@@ -2214,15 +2148,11 @@ impl Import {
 
 // --- SortDecl ---
 
-#[pyclass(extends = PySentence)]
+#[pyclass(extends = PySentence, get_all)]
 pub struct SortDecl {
-    #[pyo3(get)]
     name: String,
-    #[pyo3(get)]
     vars: Vec<Py<SortVar>>,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
-    #[pyo3(get)]
     hooked: bool,
 }
 
@@ -2314,17 +2244,12 @@ impl SortDecl {
 
 // --- SymbolDecl ---
 
-#[pyclass(extends = PySentence)]
+#[pyclass(extends = PySentence, get_all)]
 pub struct SymbolDecl {
-    #[pyo3(get)]
     symbol: Py<Symbol>,
-    #[pyo3(get)]
     param_sorts: Vec<Sort>,
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
-    #[pyo3(get)]
     hooked: bool,
 }
 
@@ -2423,19 +2348,13 @@ impl SymbolDecl {
 
 // --- AliasDecl ---
 
-#[pyclass(extends = PySentence)]
+#[pyclass(extends = PySentence, get_all)]
 pub struct AliasDecl {
-    #[pyo3(get)]
     alias: Py<Symbol>,
-    #[pyo3(get)]
     param_sorts: Vec<Sort>,
-    #[pyo3(get)]
     sort: Sort,
-    #[pyo3(get)]
     left: crate::kore::App,
-    #[pyo3(get)]
     right: Pattern,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
 }
 
@@ -2541,13 +2460,10 @@ impl AliasDecl {
 
 // --- Axiom ---
 
-#[pyclass(extends = PySentence)]
+#[pyclass(extends = PySentence, get_all)]
 pub struct Axiom {
-    #[pyo3(get)]
     vars: Vec<Py<SortVar>>,
-    #[pyo3(get)]
     pattern: Pattern,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
 }
 
@@ -2628,13 +2544,10 @@ impl Axiom {
 
 // --- Claim ---
 
-#[pyclass(extends = PySentence)]
+#[pyclass(extends = PySentence, get_all)]
 pub struct Claim {
-    #[pyo3(get)]
     vars: Vec<Py<SortVar>>,
-    #[pyo3(get)]
     pattern: Pattern,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
 }
 
@@ -2717,13 +2630,10 @@ impl Claim {
 // Module bindings
 // ==========================================
 
-#[pyclass(name = "Module")]
+#[pyclass(name = "Module", get_all)]
 pub struct KoreModule {
-    #[pyo3(get)]
     name: String,
-    #[pyo3(get)]
     sentences: Vec<Sentence>,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
 }
 
@@ -2808,11 +2718,9 @@ impl KoreModule {
 // Definition bindings
 // ==========================================
 
-#[pyclass(name = "Definition")]
+#[pyclass(name = "Definition", get_all)]
 pub struct KoreDefinition {
-    #[pyo3(get)]
     modules: Vec<crate::kore::Module>,
-    #[pyo3(get)]
     attrs: Vec<crate::kore::App>,
 }
 
