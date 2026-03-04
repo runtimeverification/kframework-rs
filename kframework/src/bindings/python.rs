@@ -101,11 +101,15 @@ fn pyobject_to_serde_value(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value
 
 trait Wrappable<RustType>: Sized
 where
-    RustType: std::fmt::Debug,
+    RustType: Clone + std::fmt::Debug,
 {
-    fn wrap(py: Python<'_>, rust: &RustType) -> PyResult<Self>;
+    fn wrap_into(py: Python<'_>, rust: RustType) -> PyResult<Self>;
 
-    fn error(rust: &RustType) -> PyResult<Self> {
+    fn as_wrap(py: Python<'_>, rust: &RustType) -> PyResult<Self> {
+        Self::wrap_into(py, rust.clone())
+    }
+
+    fn error(rust: RustType) -> PyResult<Self> {
         Err(PyTypeError::new_err(format!(
             "Error wrapping rust value into python object: {:?}",
             rust
@@ -118,13 +122,13 @@ fn convert<SubClass, RustType>(
     it: RustType,
 ) -> PyResult<Bound<'_, SubClass::BaseType>>
 where
-    RustType: std::fmt::Debug,
+    RustType: Clone + std::fmt::Debug,
     SubClass: PyClass + Wrappable<RustType>,
     SubClass::BaseType: Wrappable<RustType>,
     (SubClass, SubClass::BaseType): Into<PyClassInitializer<SubClass>>,
 {
-    let s = SubClass::wrap(py, &it)?;
-    let b = SubClass::BaseType::wrap(py, &it)?;
+    let s = SubClass::as_wrap(py, &it)?;
+    let b = SubClass::BaseType::wrap_into(py, it)?;
 
     Ok(Bound::new(py, (s, b))?.cast_into::<SubClass::BaseType>()?)
 }
@@ -214,9 +218,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Sort {
 }
 
 impl Wrappable<Sort> for PySort {
-    fn wrap(_py: Python<'_>, rust: &Sort) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, rust: Sort) -> PyResult<Self> {
         Ok(Self {
-            wrapped: rust.clone().into(),
+            wrapped: rust.into(),
         })
     }
 }
@@ -259,11 +263,9 @@ pub struct SortVar {
 }
 
 impl Wrappable<Sort> for SortVar {
-    fn wrap(_py: Python<'_>, it: &Sort) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Sort) -> PyResult<Self> {
         if let Sort::Var(id) = it {
-            Ok(SortVar {
-                name: id.clone().value(),
-            })
+            Ok(SortVar { name: id.value() })
         } else {
             Self::error(it)
         }
@@ -304,11 +306,11 @@ pub struct SortApp {
 }
 
 impl Wrappable<Sort> for SortApp {
-    fn wrap(_py: Python<'_>, it: &Sort) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Sort) -> PyResult<Self> {
         if let Sort::App { id, args } = it {
             Ok(Self {
-                name: id.clone().value(),
-                sorts: args.to_vec(),
+                name: id.value(),
+                sorts: args,
             })
         } else {
             Self::error(it)
@@ -409,9 +411,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Pattern {
 }
 
 impl Wrappable<Pattern> for PyPattern {
-    fn wrap(_py: Python<'_>, rust: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, rust: Pattern) -> PyResult<Self> {
         Ok(Self {
-            wrapped: rust.clone().into(),
+            wrapped: rust.into(),
         })
     }
 }
@@ -457,11 +459,11 @@ pub struct EVar {
 }
 
 impl Wrappable<Pattern> for EVar {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Var(var) = it {
             Ok(Self {
-                name: var.id.clone().value(),
-                sort: var.sort.clone(),
+                name: var.id.value(),
+                sort: var.sort,
             })
         } else {
             Self::error(it)
@@ -526,11 +528,11 @@ pub struct PySVar {
 }
 
 impl Wrappable<Pattern> for PySVar {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::SVar(svar) = it {
             Ok(Self {
-                name: svar.id.clone().value(),
-                sort: svar.sort.clone(),
+                name: svar.id.value(),
+                sort: svar.sort,
             })
         } else {
             Self::error(it)
@@ -593,9 +595,9 @@ pub struct KoreString {
 }
 
 impl Wrappable<Pattern> for KoreString {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Str(s) = it {
-            Ok(Self { value: s.0.clone() })
+            Ok(Self { value: s.0 })
         } else {
             Self::error(it)
         }
@@ -631,12 +633,12 @@ pub struct App {
 }
 
 impl Wrappable<Pattern> for App {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::App(app) = it {
             Ok(Self {
-                symbol: app.symbol.clone().value(),
-                sorts: app.sorts.clone(),
-                args: app.args.clone(),
+                symbol: app.symbol.value(),
+                sorts: app.sorts,
+                args: app.args,
             })
         } else {
             Self::error(it)
@@ -714,12 +716,12 @@ pub struct LeftAssoc {
 }
 
 impl Wrappable<Pattern> for LeftAssoc {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::LeftAssoc(app) = it {
             Ok(Self {
-                symbol: app.symbol.clone().value(),
-                sorts: app.sorts.clone(),
-                args: app.args.clone(),
+                symbol: app.symbol.value(),
+                sorts: app.sorts,
+                args: app.args,
             })
         } else {
             Self::error(it)
@@ -768,12 +770,12 @@ pub struct RightAssoc {
 }
 
 impl Wrappable<Pattern> for RightAssoc {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::RightAssoc(app) = it {
             Ok(Self {
-                symbol: app.symbol.clone().value(),
-                sorts: app.sorts.clone(),
-                args: app.args.clone(),
+                symbol: app.symbol.value(),
+                sorts: app.sorts,
+                args: app.args,
             })
         } else {
             Self::error(it)
@@ -818,9 +820,9 @@ pub struct Top {
 }
 
 impl Wrappable<Pattern> for Top {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Top(sort) = it {
-            Ok(Self { sort: sort.clone() })
+            Ok(Self { sort })
         } else {
             Self::error(it)
         }
@@ -852,9 +854,9 @@ pub struct Bottom {
 }
 
 impl Wrappable<Pattern> for Bottom {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Bottom(sort) = it {
-            Ok(Self { sort: sort.clone() })
+            Ok(Self { sort })
         } else {
             Self::error(it)
         }
@@ -888,11 +890,11 @@ pub struct DV {
 }
 
 impl Wrappable<Pattern> for DV {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Dv { sort, value } = it {
             Ok(Self {
-                sort: sort.clone(),
-                value: value.clone().0,
+                sort,
+                value: value.0,
             })
         } else {
             Self::error(it)
@@ -928,12 +930,9 @@ pub struct Not {
 }
 
 impl Wrappable<Pattern> for Not {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Not { sort, op } = it {
-            Ok(Self {
-                sort: sort.clone(),
-                pattern: *op.clone(),
-            })
+            Ok(Self { sort, pattern: *op })
         } else {
             Self::error(it)
         }
@@ -971,12 +970,9 @@ pub struct Next {
 }
 
 impl Wrappable<Pattern> for Next {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Next { sort, op } = it {
-            Ok(Self {
-                sort: sort.clone(),
-                pattern: *op.clone(),
-            })
+            Ok(Self { sort, pattern: *op })
         } else {
             Self::error(it)
         }
@@ -1016,12 +1012,12 @@ pub struct Implies {
 }
 
 impl Wrappable<Pattern> for Implies {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Implies { sort, left, right } = it {
             Ok(Self {
-                sort: sort.clone(),
-                left: *left.clone(),
-                right: *right.clone(),
+                sort,
+                left: *left,
+                right: *right,
             })
         } else {
             Self::error(it)
@@ -1064,12 +1060,12 @@ pub struct Iff {
 }
 
 impl Wrappable<Pattern> for Iff {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Iff { sort, left, right } = it {
             Ok(Self {
-                sort: sort.clone(),
-                left: *left.clone(),
-                right: *right.clone(),
+                sort,
+                left: *left,
+                right: *right,
             })
         } else {
             Self::error(it)
@@ -1112,12 +1108,12 @@ pub struct Rewrites {
 }
 
 impl Wrappable<Pattern> for Rewrites {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Rewrites { sort, left, right } = it {
             Ok(Self {
-                sort: sort.clone(),
-                left: *left.clone(),
-                right: *right.clone(),
+                sort,
+                left: *left,
+                right: *right,
             })
         } else {
             Self::error(it)
@@ -1158,12 +1154,9 @@ pub struct And {
 }
 
 impl Wrappable<Pattern> for And {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::And { sort, ops } = it {
-            Ok(Self {
-                sort: sort.clone(),
-                ops: ops.clone(),
-            })
+            Ok(Self { sort, ops })
         } else {
             Self::error(it)
         }
@@ -1198,12 +1191,9 @@ pub struct Or {
 }
 
 impl Wrappable<Pattern> for Or {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Or { sort, ops } = it {
-            Ok(Self {
-                sort: sort.clone(),
-                ops: ops.clone(),
-            })
+            Ok(Self { sort, ops })
         } else {
             Self::error(it)
         }
@@ -1240,12 +1230,12 @@ pub struct Exists {
 }
 
 impl Wrappable<Pattern> for Exists {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Exists { sort, var, op } = it {
             Ok(Self {
-                sort: sort.clone(),
-                var: var.clone(),
-                pattern: *op.clone(),
+                sort,
+                var,
+                pattern: *op,
             })
         } else {
             Self::error(it)
@@ -1288,12 +1278,12 @@ pub struct Forall {
 }
 
 impl Wrappable<Pattern> for Forall {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Forall { sort, var, op } = it {
             Ok(Self {
-                sort: sort.clone(),
-                var: var.clone(),
-                pattern: *op.clone(),
+                sort,
+                var,
+                pattern: *op,
             })
         } else {
             Self::error(it)
@@ -1334,12 +1324,9 @@ pub struct Mu {
 }
 
 impl Wrappable<Pattern> for Mu {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Mu { var, op } = it {
-            Ok(Self {
-                var: var.clone(),
-                pattern: *op.clone(),
-            })
+            Ok(Self { var, pattern: *op })
         } else {
             Self::error(it)
         }
@@ -1377,12 +1364,9 @@ pub struct Nu {
 }
 
 impl Wrappable<Pattern> for Nu {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Nu { var, op } = it {
-            Ok(Self {
-                var: var.clone(),
-                pattern: *op.clone(),
-            })
+            Ok(Self { var, pattern: *op })
         } else {
             Self::error(it)
         }
@@ -1422,12 +1406,12 @@ pub struct Ceil {
 }
 
 impl Wrappable<Pattern> for Ceil {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Ceil { op_sort, sort, op } = it {
             Ok(Self {
-                op_sort: op_sort.clone(),
-                sort: sort.clone(),
-                pattern: *op.clone(),
+                op_sort,
+                sort,
+                pattern: *op,
             })
         } else {
             Self::error(it)
@@ -1475,12 +1459,12 @@ pub struct Floor {
 }
 
 impl Wrappable<Pattern> for Floor {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Floor { op_sort, sort, op } = it {
             Ok(Self {
-                op_sort: op_sort.clone(),
-                sort: sort.clone(),
-                pattern: *op.clone(),
+                op_sort,
+                sort,
+                pattern: *op,
             })
         } else {
             Self::error(it)
@@ -1530,7 +1514,7 @@ pub struct Equals {
 }
 
 impl Wrappable<Pattern> for Equals {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Equals {
             op_sort,
             sort,
@@ -1539,10 +1523,10 @@ impl Wrappable<Pattern> for Equals {
         } = it
         {
             Ok(Self {
-                op_sort: op_sort.clone(),
-                sort: sort.clone(),
-                left: *left.clone(),
-                right: *right.clone(),
+                op_sort,
+                sort,
+                left: *left,
+                right: *right,
             })
         } else {
             Self::error(it)
@@ -1595,7 +1579,7 @@ pub struct In {
 }
 
 impl Wrappable<Pattern> for In {
-    fn wrap(_py: Python<'_>, it: &Pattern) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::In {
             op_sort,
             sort,
@@ -1604,10 +1588,10 @@ impl Wrappable<Pattern> for In {
         } = it
         {
             Ok(Self {
-                op_sort: op_sort.clone(),
-                sort: sort.clone(),
-                left: *left.clone(),
-                right: *right.clone(),
+                op_sort,
+                sort,
+                left: *left,
+                right: *right,
             })
         } else {
             Self::error(it)
@@ -1716,9 +1700,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Sentence {
 }
 
 impl Wrappable<Sentence> for PySentence {
-    fn wrap(_py: Python<'_>, rust: &Sentence) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, rust: Sentence) -> PyResult<Self> {
         Ok(Self {
-            wrapped: rust.clone().into(),
+            wrapped: rust.into(),
         })
     }
 }
@@ -1748,11 +1732,11 @@ pub struct Import {
 }
 
 impl Wrappable<Sentence> for Import {
-    fn wrap(_py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+    fn wrap_into(_py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Import { module, attrs } = it {
             Ok(Self {
-                module_name: module.clone().value(),
-                attrs: attrs.to_vec(),
+                module_name: module.value(),
+                attrs,
             })
         } else {
             Self::error(it)
@@ -1800,7 +1784,7 @@ pub struct SortDecl {
 }
 
 impl Wrappable<Sentence> for SortDecl {
-    fn wrap(py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Sort {
             id,
             vars,
@@ -1809,8 +1793,7 @@ impl Wrappable<Sentence> for SortDecl {
         } = it
         {
             let vars: Vec<Py<SortVar>> = vars
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|id| {
                     Sort::Var(id)
                         .into_pyobject(py)?
@@ -1819,10 +1802,10 @@ impl Wrappable<Sentence> for SortDecl {
                 })
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
-                name: id.clone().value(),
+                name: id.value(),
                 vars,
                 attrs: attrs.to_vec(),
-                hooked: *hooked,
+                hooked,
             })
         } else {
             Self::error(it)
@@ -1878,7 +1861,7 @@ pub struct SymbolDecl {
 }
 
 impl Wrappable<Sentence> for SymbolDecl {
-    fn wrap(py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Symbol {
             id,
             vars,
@@ -1889,8 +1872,7 @@ impl Wrappable<Sentence> for SymbolDecl {
         } = it
         {
             let vars: Vec<Py<SortVar>> = vars
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|id| {
                     Sort::Var(id)
                         .into_pyobject(py)?
@@ -1899,15 +1881,15 @@ impl Wrappable<Sentence> for SymbolDecl {
                 })
                 .collect::<Result<_, PyErr>>()?;
             let symbol = Symbol {
-                name: id.clone().value(),
+                name: id.value(),
                 vars,
             };
             Ok(Self {
                 symbol: Py::new(py, symbol)?,
-                param_sorts: param_sorts.clone(),
-                sort: sort.clone(),
-                attrs: attrs.to_vec(),
-                hooked: *hooked,
+                param_sorts,
+                sort,
+                attrs,
+                hooked,
             })
         } else {
             Self::error(it)
@@ -1981,7 +1963,7 @@ pub struct AliasDecl {
 }
 
 impl Wrappable<Sentence> for AliasDecl {
-    fn wrap(py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Alias {
             id,
             vars,
@@ -1993,8 +1975,7 @@ impl Wrappable<Sentence> for AliasDecl {
         } = it
         {
             let vars: Vec<Py<SortVar>> = vars
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|id| {
                     Sort::Var(id)
                         .into_pyobject(py)?
@@ -2003,16 +1984,16 @@ impl Wrappable<Sentence> for AliasDecl {
                 })
                 .collect::<Result<_, PyErr>>()?;
             let symbol = Symbol {
-                name: id.clone().value(),
+                name: id.value(),
                 vars,
             };
             Ok(Self {
                 alias: Py::new(py, symbol)?,
-                param_sorts: param_sorts.clone(),
-                sort: sort.clone(),
-                left: left.clone(),
-                right: *right.clone(),
-                attrs: attrs.to_vec(),
+                param_sorts,
+                sort,
+                left,
+                right: *right,
+                attrs,
             })
         } else {
             Self::error(it)
@@ -2083,7 +2064,7 @@ pub struct Axiom {
 }
 
 impl Wrappable<Sentence> for Axiom {
-    fn wrap(py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Axiom {
             vars,
             pattern,
@@ -2091,8 +2072,7 @@ impl Wrappable<Sentence> for Axiom {
         } = it
         {
             let vars: Vec<Py<SortVar>> = vars
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|id| {
                     Sort::Var(id)
                         .into_pyobject(py)?
@@ -2102,8 +2082,8 @@ impl Wrappable<Sentence> for Axiom {
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
                 vars,
-                pattern: *pattern.clone(),
-                attrs: attrs.to_vec(),
+                pattern: *pattern,
+                attrs,
             })
         } else {
             Self::error(it)
@@ -2152,7 +2132,7 @@ pub struct Claim {
 }
 
 impl Wrappable<Sentence> for Claim {
-    fn wrap(py: Python<'_>, it: &Sentence) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Claim {
             vars,
             pattern,
@@ -2160,8 +2140,7 @@ impl Wrappable<Sentence> for Claim {
         } = it
         {
             let vars: Vec<Py<SortVar>> = vars
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(|id| {
                     Sort::Var(id)
                         .into_pyobject(py)?
@@ -2171,8 +2150,8 @@ impl Wrappable<Sentence> for Claim {
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
                 vars,
-                pattern: *pattern.clone(),
-                attrs: attrs.to_vec(),
+                pattern: *pattern,
+                attrs,
             })
         } else {
             Self::error(it)
