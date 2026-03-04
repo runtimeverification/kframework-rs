@@ -569,6 +569,17 @@ impl EVar {
         Self { name, sort }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        name: Option<Py<PyString>>,
+        sort: Option<Sort>,
+    ) -> PyResult<Py<PyPattern>> {
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        Self::new_(py, name, sort)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -649,6 +660,17 @@ impl PySVar {
         Self { name, sort }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        name: Option<Py<PyString>>,
+        sort: Option<Sort>,
+    ) -> PyResult<Py<PyPattern>> {
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        Self::new_(py, name, sort)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -723,6 +745,11 @@ impl KoreString {
         Self { value }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(&self, py: Python<'_>, value: Option<Py<PyString>>) -> PyResult<Py<PyPattern>> {
+        let value = value.unwrap_or_else(|| self.value.clone_ref(py));
+        Self::new_(py, value)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -788,6 +815,19 @@ impl App {
         }
         .into_pyobject(py)
         .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        symbol: Option<Py<PyString>>,
+        sorts: Option<Vec<Sort>>,
+        args: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
+        let sorts = sorts.or_else(|| Some(self.sorts.clone()));
+        let args = args.or_else(|| Some(self.args.clone()));
+        Self::new_(py, symbol, sorts, args)
     }
 
     #[classattr]
@@ -886,6 +926,19 @@ impl LeftAssoc {
         .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        symbol: Option<Py<PyString>>,
+        sorts: Option<Vec<Sort>>,
+        args: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
+        let sorts = sorts.or_else(|| Some(self.sorts.clone()));
+        let args = args.or_else(|| Some(self.args.clone()));
+        Self::new_(py, symbol, sorts, args)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -955,6 +1008,19 @@ impl RightAssoc {
         .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        symbol: Option<Py<PyString>>,
+        sorts: Option<Vec<Sort>>,
+        args: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
+        let sorts = sorts.or_else(|| Some(self.sorts.clone()));
+        let args = args.or_else(|| Some(self.args.clone()));
+        Self::new_(py, symbol, sorts, args)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1000,6 +1066,11 @@ impl Top {
         Self { sort }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(&self, py: Python<'_>, sort: Option<Sort>) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        Self::new_(py, sort)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1041,6 +1112,11 @@ impl Bottom {
     #[new]
     fn new_(py: Python<'_>, sort: Sort) -> PyResult<Py<PyPattern>> {
         Self { sort }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    fn r#let(&self, py: Python<'_>, sort: Option<Sort>) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        Self::new_(py, sort)
     }
 
     #[classattr]
@@ -1094,6 +1170,17 @@ impl DV {
         Self { sort, value }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        value: Option<Py<PyString>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let value = value.unwrap_or_else(|| self.value.clone_ref(py));
+        Self::new_(py, sort, value)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1142,6 +1229,17 @@ impl Not {
         Self { sort, pattern }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, sort, pattern)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1188,6 +1286,17 @@ impl Next {
     #[new]
     fn new_(py: Python<'_>, sort: Sort, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         Self { sort, pattern }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, sort, pattern)
     }
 
     #[classattr]
@@ -1244,6 +1353,19 @@ impl Implies {
         Self { sort, left, right }
             .into_pyobject(py)
             .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        left: Option<Pattern>,
+        right: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let left = left.unwrap_or_else(|| self.left.clone());
+        let right = right.unwrap_or_else(|| self.right.clone());
+        Self::new_(py, sort, left, right)
     }
 
     #[classattr]
@@ -1303,6 +1425,19 @@ impl Iff {
             .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        left: Option<Pattern>,
+        right: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let left = left.unwrap_or_else(|| self.left.clone());
+        let right = right.unwrap_or_else(|| self.right.clone());
+        Self::new_(py, sort, left, right)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1360,6 +1495,19 @@ impl Rewrites {
             .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        left: Option<Pattern>,
+        right: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let left = left.unwrap_or_else(|| self.left.clone());
+        let right = right.unwrap_or_else(|| self.right.clone());
+        Self::new_(py, sort, left, right)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1409,6 +1557,17 @@ impl And {
         Self { sort, ops }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        ops: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let ops = ops.unwrap_or_else(|| self.ops.clone());
+        Self::new_(py, sort, ops)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1455,6 +1614,17 @@ impl Or {
     #[new]
     fn new_(py: Python<'_>, sort: Sort, ops: Vec<Pattern>) -> PyResult<Py<PyPattern>> {
         Self { sort, ops }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        ops: Option<Vec<Pattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let ops = ops.unwrap_or_else(|| self.ops.clone());
+        Self::new_(py, sort, ops)
     }
 
     #[classattr]
@@ -1511,6 +1681,19 @@ impl Exists {
         Self { sort, var, pattern }
             .into_pyobject(py)
             .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        var: Option<Var>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let var = var.unwrap_or_else(|| self.var.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, sort, var, pattern)
     }
 
     #[classattr]
@@ -1570,6 +1753,19 @@ impl Forall {
             .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Sort>,
+        var: Option<Var>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let var = var.unwrap_or_else(|| self.var.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, sort, var, pattern)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1619,6 +1815,17 @@ impl Mu {
         Self { var, pattern }.into_pyobject(py).map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        var: Option<SVar>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let var = var.unwrap_or_else(|| self.var.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, var, pattern)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1665,6 +1872,17 @@ impl Nu {
     #[new]
     fn new_(py: Python<'_>, var: SVar, pattern: Pattern) -> PyResult<Py<PyPattern>> {
         Self { var, pattern }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        var: Option<SVar>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let var = var.unwrap_or_else(|| self.var.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, var, pattern)
     }
 
     #[classattr]
@@ -1732,6 +1950,19 @@ impl Ceil {
         .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        op_sort: Option<Sort>,
+        sort: Option<Sort>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let op_sort = op_sort.unwrap_or_else(|| self.op_sort.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, op_sort, sort, pattern)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -1796,6 +2027,19 @@ impl Floor {
         }
         .into_pyobject(py)
         .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        op_sort: Option<Sort>,
+        sort: Option<Sort>,
+        pattern: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let op_sort = op_sort.unwrap_or_else(|| self.op_sort.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        Self::new_(py, op_sort, sort, pattern)
     }
 
     #[classattr]
@@ -1873,6 +2117,21 @@ impl Equals {
         }
         .into_pyobject(py)
         .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        op_sort: Option<Sort>,
+        sort: Option<Sort>,
+        left: Option<Pattern>,
+        right: Option<Pattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        let op_sort = op_sort.unwrap_or_else(|| self.op_sort.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let left = left.unwrap_or_else(|| self.left.clone());
+        let right = right.unwrap_or_else(|| self.right.clone());
+        Self::new_(py, op_sort, sort, left, right)
     }
 
     #[classattr]
@@ -2508,6 +2767,26 @@ impl Axiom {
         .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        vars: Option<Vec<Id>>,
+        pattern: Option<Pattern>,
+        attrs: Option<Vec<crate::kore::App>>,
+    ) -> PyResult<Py<PySentence>> {
+        let vars = if let Some(vars) = vars {
+            vars
+        } else {
+            self.vars
+                .iter()
+                .map(|v| v.extract(py))
+                .collect::<Result<_, _>>()?
+        };
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        let attrs = attrs.or_else(|| Some(self.attrs.clone()));
+        Self::new_(py, vars, pattern, attrs)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -2592,6 +2871,26 @@ impl Claim {
         .map(Bound::unbind)
     }
 
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        vars: Option<Vec<Id>>,
+        pattern: Option<Pattern>,
+        attrs: Option<Vec<crate::kore::App>>,
+    ) -> PyResult<Py<PySentence>> {
+        let vars = if let Some(vars) = vars {
+            vars
+        } else {
+            self.vars
+                .iter()
+                .map(|v| v.extract(py))
+                .collect::<Result<_, _>>()?
+        };
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        let attrs = attrs.or_else(|| Some(self.attrs.clone()));
+        Self::new_(py, vars, pattern, attrs)
+    }
+
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
@@ -2663,6 +2962,19 @@ impl KoreModule {
         }
         .into_pyobject(py)
         .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        name: Option<Py<PyString>>,
+        sentences: Option<Vec<Sentence>>,
+        attrs: Option<Vec<crate::kore::App>>,
+    ) -> PyResult<Py<KoreModule>> {
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
+        let sentences = sentences.or_else(|| Some(self.sentences.clone()));
+        let attrs = attrs.or_else(|| Some(self.attrs.clone()));
+        Self::new_(py, name, sentences, attrs)
     }
 
     #[staticmethod]
@@ -2741,6 +3053,17 @@ impl KoreDefinition {
         }
         .into_pyobject(py)
         .map(Bound::unbind)
+    }
+
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        modules: Option<Vec<crate::kore::Module>>,
+        attrs: Option<Vec<crate::kore::App>>,
+    ) -> PyResult<Py<KoreDefinition>> {
+        let modules = modules.or_else(|| Some(self.modules.clone()));
+        let attrs = attrs.or_else(|| Some(self.attrs.clone()));
+        Self::new_(py, modules, attrs)
     }
 
     #[staticmethod]
