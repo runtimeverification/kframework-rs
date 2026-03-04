@@ -160,16 +160,21 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Id {
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let sortvar_try = obj.cast::<SortVar>();
         if let Ok(sortvar) = sortvar_try {
-            let id: Id = sortvar
-                .borrow()
-                .name
-                .clone()
-                .try_into()
-                .map_err(PyValueError::new_err)?;
+            let id: Id = sortvar.borrow().name.extract(obj.py())?;
             return Ok(id);
         }
         let s = obj.cast::<PyString>()?.to_string();
         Id::new(s).map_err(PyValueError::new_err)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for Id {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(PyString::new(py, &self.value()))
     }
 }
 
@@ -191,12 +196,32 @@ impl<'a, 'py> FromPyObject<'a, 'py> for SetVarId {
     }
 }
 
+impl<'py> IntoPyObject<'py> for SetVarId {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(PyString::new(py, &self.value()))
+    }
+}
+
 impl<'a, 'py> FromPyObject<'a, 'py> for Str {
     type Error = PyErr;
 
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let s = obj.cast::<PyString>()?.to_string();
         Str::from_kore(&s).map_err(PyValueError::new_err)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for Str {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(PyString::new(py, &self.0))
     }
 }
 
@@ -209,6 +234,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for SymbolId {
     }
 }
 
+impl<'py> IntoPyObject<'py> for SymbolId {
+    type Target = PyString;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(PyString::new(py, &self.value()))
+    }
+}
 // ==========================================
 // Sort bindings
 // ==========================================
@@ -279,16 +313,17 @@ impl PySort {
     }
 }
 
-#[pyclass(extends = PySort, from_py_object, get_all)]
-#[derive(Clone)]
+#[pyclass(extends = PySort, get_all)]
 pub struct SortVar {
-    name: String,
+    name: Py<PyString>,
 }
 
 impl Wrappable<Sort> for SortVar {
-    fn wrap_into(_py: Python<'_>, it: Sort) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sort) -> PyResult<Self> {
         if let Sort::Var(id) = it {
-            Ok(SortVar { name: id.value() })
+            Ok(SortVar {
+                name: id.into_pyobject(py)?.into(),
+            })
         } else {
             Self::error(it)
         }
@@ -301,11 +336,7 @@ impl<'py> IntoPyObject<'py> for SortVar {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id: Id = self
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id: Id = self.name.extract(py)?;
         let var = Sort::Var(id);
         convert_with_wrapped(py, var, self)
     }
@@ -314,17 +345,13 @@ impl<'py> IntoPyObject<'py> for SortVar {
 #[pymethods]
 impl SortVar {
     #[new]
-    fn new_(py: Python<'_>, name: Id) -> PyResult<Py<PySort>> {
-        Self { name: name.value() }
-            .into_pyobject(py)
-            .map(Bound::unbind)
+    fn new_(py: Python<'_>, name: Py<PyString>) -> PyResult<Py<PySort>> {
+        Self { name }.into_pyobject(py).map(Bound::unbind)
     }
 
     #[pyo3(signature = (name=None))]
-    fn r#let(&self, py: Python<'_>, name: Option<Id>) -> PyResult<Py<PySort>> {
-        let name = name
-            .map_or_else(|| self.name.clone().try_into(), Ok)
-            .map_err(PyValueError::new_err)?;
+    fn r#let(&self, py: Python<'_>, name: Option<Py<PyString>>) -> PyResult<Py<PySort>> {
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
         Self::new_(py, name)
     }
 
@@ -338,15 +365,15 @@ impl SortVar {
 
 #[pyclass(extends = PySort, get_all)]
 pub struct SortApp {
-    name: String,
+    name: Py<PyString>,
     sorts: Vec<Sort>,
 }
 
 impl Wrappable<Sort> for SortApp {
-    fn wrap_into(_py: Python<'_>, it: Sort) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sort) -> PyResult<Self> {
         if let Sort::App { id, args } = it {
             Ok(Self {
-                name: id.value(),
+                name: PyString::new(py, &id.value()).into(),
                 sorts: args,
             })
         } else {
@@ -361,11 +388,7 @@ impl<'py> IntoPyObject<'py> for SortApp {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id: Id = self
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id: Id = self.name.extract(py)?;
         let app = Sort::App {
             id,
             args: self.sorts.to_vec(),
@@ -378,10 +401,10 @@ impl<'py> IntoPyObject<'py> for SortApp {
 impl SortApp {
     #[new]
     #[pyo3(signature = (name, sorts=None))]
-    fn new_(py: Python<'_>, name: Id, sorts: Option<Vec<Sort>>) -> PyResult<Py<PySort>> {
+    fn new_(py: Python<'_>, name: Py<PyString>, sorts: Option<Vec<Sort>>) -> PyResult<Py<PySort>> {
         Self {
-            name: name.value(),
-            sorts: sorts.unwrap_or(vec![]),
+            name,
+            sorts: sorts.unwrap_or_default(),
         }
         .into_pyobject(py)
         .map(Bound::unbind)
@@ -391,12 +414,10 @@ impl SortApp {
     fn r#let(
         &self,
         py: Python<'_>,
-        name: Option<Id>,
+        name: Option<Py<PyString>>,
         sorts: Option<Vec<Sort>>,
     ) -> PyResult<Py<PySort>> {
-        let name = name
-            .map_or_else(|| Id::new(self.name.clone()), Ok)
-            .map_err(PyValueError::new_err)?;
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
         let sorts = sorts.unwrap_or_else(|| self.sorts.clone());
         Self::new_(py, name, Some(sorts))
     }
@@ -508,15 +529,15 @@ impl PyPattern {
 
 #[pyclass(extends = PyPattern, get_all)]
 pub struct EVar {
-    name: String,
+    name: Py<PyString>,
     sort: Sort,
 }
 
 impl Wrappable<Pattern> for EVar {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Var(var) = it {
             Ok(Self {
-                name: var.id.value(),
+                name: var.id.into_pyobject(py)?.into(),
                 sort: var.sort,
             })
         } else {
@@ -531,11 +552,7 @@ impl<'py> IntoPyObject<'py> for EVar {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id = self
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id = self.name.extract(py)?;
         let var = Var {
             id,
             sort: self.sort.clone(),
@@ -548,13 +565,8 @@ impl<'py> IntoPyObject<'py> for EVar {
 #[pymethods]
 impl EVar {
     #[new]
-    fn new_(py: Python<'_>, name: Id, sort: Sort) -> PyResult<Py<PyPattern>> {
-        Self {
-            name: name.value(),
-            sort,
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
+    fn new_(py: Python<'_>, name: Py<PyString>, sort: Sort) -> PyResult<Py<PyPattern>> {
+        Self { name, sort }.into_pyobject(py).map(Bound::unbind)
     }
 
     #[classattr]
@@ -597,15 +609,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Var {
 
 #[pyclass(extends = PyPattern, name = "SVar", get_all)]
 pub struct PySVar {
-    name: String,
+    name: Py<PyString>,
     sort: Sort,
 }
 
 impl Wrappable<Pattern> for PySVar {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::SVar(svar) = it {
             Ok(Self {
-                name: svar.id.value(),
+                name: svar.id.into_pyobject(py)?.into(),
                 sort: svar.sort,
             })
         } else {
@@ -620,11 +632,7 @@ impl<'py> IntoPyObject<'py> for PySVar {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id: SetVarId = self
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id: SetVarId = self.name.extract(py)?;
         let svar = SVar {
             id,
             sort: self.sort.clone(),
@@ -637,13 +645,8 @@ impl<'py> IntoPyObject<'py> for PySVar {
 #[pymethods]
 impl PySVar {
     #[new]
-    fn new_(py: Python<'_>, name: SetVarId, sort: Sort) -> PyResult<Py<PyPattern>> {
-        Self {
-            name: name.value(),
-            sort,
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
+    fn new_(py: Python<'_>, name: Py<PyString>, sort: Sort) -> PyResult<Py<PyPattern>> {
+        Self { name, sort }.into_pyobject(py).map(Bound::unbind)
     }
 
     #[classattr]
@@ -686,13 +689,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for SVar {
 
 #[pyclass(extends = PyPattern, name = "String", get_all)]
 pub struct KoreString {
-    value: String,
+    value: Py<PyString>,
 }
 
 impl Wrappable<Pattern> for KoreString {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Str(s) = it {
-            Ok(Self { value: s.0 })
+            Ok(Self {
+                value: s.into_pyobject(py)?.into(),
+            })
         } else {
             Self::error(it)
         }
@@ -705,7 +710,7 @@ impl<'py> IntoPyObject<'py> for KoreString {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let str = Str::from_kore(&self.value).map_err(PyValueError::new_err)?;
+        let str = self.value.extract(py)?;
         let pat = Pattern::Str(str);
         convert_with_wrapped(py, pat, self)
     }
@@ -714,8 +719,8 @@ impl<'py> IntoPyObject<'py> for KoreString {
 #[pymethods]
 impl KoreString {
     #[new]
-    fn new_(py: Python<'_>, value: Str) -> PyResult<Py<PyPattern>> {
-        Self { value: value.0 }.into_pyobject(py).map(Bound::unbind)
+    fn new_(py: Python<'_>, value: Py<PyString>) -> PyResult<Py<PyPattern>> {
+        Self { value }.into_pyobject(py).map(Bound::unbind)
     }
 
     #[classattr]
@@ -730,16 +735,16 @@ impl KoreString {
 
 #[pyclass(extends = PyPattern, name = "App", get_all)]
 pub struct App {
-    symbol: String,
+    symbol: Py<PyString>,
     sorts: Vec<Sort>,
     args: Vec<Pattern>,
 }
 
 impl Wrappable<Pattern> for App {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::App(app) = it {
             Ok(Self {
-                symbol: app.symbol.value(),
+                symbol: app.symbol.into_pyobject(py)?.into(),
                 sorts: app.sorts,
                 args: app.args,
             })
@@ -755,11 +760,7 @@ impl<'py> IntoPyObject<'py> for App {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let symbol = self
-            .symbol
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let symbol = self.symbol.extract(py)?;
         let app = crate::kore::App {
             symbol,
             sorts: self.sorts.to_vec(),
@@ -776,12 +777,12 @@ impl App {
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
-        symbol: SymbolId,
+        symbol: Py<PyString>,
         sorts: Option<Vec<Sort>>,
         args: Option<Vec<Pattern>>,
     ) -> PyResult<Py<PyPattern>> {
         Self {
-            symbol: symbol.value(),
+            symbol,
             sorts: sorts.unwrap_or_default(),
             args: args.unwrap_or_default(),
         }
@@ -830,16 +831,16 @@ impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::App {
 
 #[pyclass(extends = PyPattern, get_all)]
 pub struct LeftAssoc {
-    symbol: String,
+    symbol: Py<PyString>,
     sorts: Vec<Sort>,
     args: Vec<Pattern>,
 }
 
 impl Wrappable<Pattern> for LeftAssoc {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::LeftAssoc(app) = it {
             Ok(Self {
-                symbol: app.symbol.value(),
+                symbol: app.symbol.into_pyobject(py)?.into(),
                 sorts: app.sorts,
                 args: app.args,
             })
@@ -855,11 +856,7 @@ impl<'py> IntoPyObject<'py> for LeftAssoc {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let symbol = self
-            .symbol
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let symbol = self.symbol.extract(py)?;
         let app = crate::kore::App {
             symbol,
             sorts: self.sorts.to_vec(),
@@ -876,12 +873,12 @@ impl LeftAssoc {
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
-        symbol: SymbolId,
+        symbol: Py<PyString>,
         sorts: Option<Vec<Sort>>,
         args: Option<Vec<Pattern>>,
     ) -> PyResult<Py<PyPattern>> {
         Self {
-            symbol: symbol.value(),
+            symbol,
             sorts: sorts.unwrap_or_default(),
             args: args.unwrap_or_default(),
         }
@@ -903,16 +900,16 @@ impl LeftAssoc {
 
 #[pyclass(extends = PyPattern, get_all)]
 pub struct RightAssoc {
-    symbol: String,
+    symbol: Py<PyString>,
     sorts: Vec<Sort>,
     args: Vec<Pattern>,
 }
 
 impl Wrappable<Pattern> for RightAssoc {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::RightAssoc(app) = it {
             Ok(Self {
-                symbol: app.symbol.value(),
+                symbol: app.symbol.into_pyobject(py)?.into(),
                 sorts: app.sorts,
                 args: app.args,
             })
@@ -928,11 +925,7 @@ impl<'py> IntoPyObject<'py> for RightAssoc {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let symbol = self
-            .symbol
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let symbol = self.symbol.extract(py)?;
         let app = crate::kore::App {
             symbol,
             sorts: self.sorts.to_vec(),
@@ -949,12 +942,12 @@ impl RightAssoc {
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
-        symbol: SymbolId,
+        symbol: Py<PyString>,
         sorts: Option<Vec<Sort>>,
         args: Option<Vec<Pattern>>,
     ) -> PyResult<Py<PyPattern>> {
         Self {
-            symbol: symbol.value(),
+            symbol,
             sorts: sorts.unwrap_or_default(),
             args: args.unwrap_or_default(),
         }
@@ -1063,15 +1056,15 @@ impl Bottom {
 #[pyclass(extends = PyPattern, get_all)]
 pub struct DV {
     sort: Sort,
-    value: String,
+    value: Py<PyString>,
 }
 
 impl Wrappable<Pattern> for DV {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Dv { sort, value } = it {
             Ok(Self {
                 sort,
-                value: value.0,
+                value: value.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -1085,7 +1078,7 @@ impl<'py> IntoPyObject<'py> for DV {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let value = Str::from_kore(&self.value).map_err(PyValueError::new_err)?;
+        let value = self.value.extract(py)?;
         let pat = Pattern::Dv {
             sort: self.sort.clone(),
             value,
@@ -1097,13 +1090,8 @@ impl<'py> IntoPyObject<'py> for DV {
 #[pymethods]
 impl DV {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, value: Str) -> PyResult<Py<PyPattern>> {
-        Self {
-            sort,
-            value: value.0,
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
+    fn new_(py: Python<'_>, sort: Sort, value: Py<PyString>) -> PyResult<Py<PyPattern>> {
+        Self { sort, value }.into_pyobject(py).map(Bound::unbind)
     }
 
     #[classattr]
@@ -1984,17 +1972,13 @@ impl In {
 
 #[pyclass(get_all)]
 pub struct Symbol {
-    name: String,
+    name: Py<PyString>,
     vars: Vec<Py<SortVar>>,
 }
 
 impl<'py> Symbol {
     fn as_rust_fields(&self, py: Python<'py>) -> PyResult<(SymbolId, Vec<Id>)> {
-        let id: SymbolId = self
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id: SymbolId = self.name.extract(py)?;
         let vars: Vec<Id> = self
             .vars
             .iter()
@@ -2008,9 +1992,9 @@ impl<'py> Symbol {
 impl Symbol {
     #[new]
     #[pyo3(signature = (name, vars=None))]
-    fn new_(name: SymbolId, vars: Option<Vec<Py<SortVar>>>) -> PyResult<Self> {
+    fn new_(name: Py<PyString>, vars: Option<Vec<Py<SortVar>>>) -> PyResult<Self> {
         Ok(Symbol {
-            name: name.value(),
+            name,
             vars: vars.unwrap_or_default(),
         })
     }
@@ -2084,15 +2068,15 @@ impl PySentence {
 
 #[pyclass(extends = PySentence, get_all)]
 pub struct Import {
-    module_name: String,
+    module_name: Py<PyString>,
     attrs: Vec<crate::kore::App>,
 }
 
 impl Wrappable<Sentence> for Import {
-    fn wrap_into(_py: Python<'_>, it: Sentence) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Sentence) -> PyResult<Self> {
         if let Sentence::Import { module, attrs } = it {
             Ok(Self {
-                module_name: module.value(),
+                module_name: module.into_pyobject(py)?.into(),
                 attrs,
             })
         } else {
@@ -2107,11 +2091,7 @@ impl<'py> IntoPyObject<'py> for Import {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let module = self
-            .module_name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let module = self.module_name.extract(py)?;
         let sen = Sentence::Import {
             module,
             attrs: self.attrs.to_vec(),
@@ -2126,11 +2106,11 @@ impl Import {
     #[pyo3(signature = (module_name, attrs=None))]
     fn new_(
         py: Python<'_>,
-        module_name: Id,
+        module_name: Py<PyString>,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<PySentence>> {
         Self {
-            module_name: module_name.value(),
+            module_name,
             attrs: attrs.unwrap_or_default(),
         }
         .into_pyobject(py)
@@ -2150,7 +2130,7 @@ impl Import {
 
 #[pyclass(extends = PySentence, get_all)]
 pub struct SortDecl {
-    name: String,
+    name: Py<PyString>,
     vars: Vec<Py<SortVar>>,
     attrs: Vec<crate::kore::App>,
     hooked: bool,
@@ -2162,11 +2142,7 @@ impl<'py> IntoPyObject<'py> for SortDecl {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id = self
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id = self.name.extract(py)?;
         let vars: Vec<Id> = self
             .vars
             .iter()
@@ -2196,7 +2172,7 @@ impl Wrappable<Sentence> for SortDecl {
                 .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
-                name: id.value(),
+                name: id.into_pyobject(py)?.into(),
                 vars,
                 attrs: attrs.to_vec(),
                 hooked,
@@ -2213,13 +2189,13 @@ impl SortDecl {
     #[pyo3(signature = (name, vars, attrs=None, *, hooked=false))]
     fn new_(
         py: Python<'_>,
-        name: Id,
+        name: Py<PyString>,
         vars: Vec<Id>,
         attrs: Option<Vec<crate::kore::App>>,
         hooked: bool,
     ) -> PyResult<Py<PySentence>> {
         Self {
-            name: name.value(),
+            name,
             vars: vars
                 .into_iter()
                 .map(|id| id.into_pysortvar(py))
@@ -2269,7 +2245,7 @@ impl Wrappable<Sentence> for SymbolDecl {
                 .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             let symbol = Symbol {
-                name: id.value(),
+                name: id.into_pyobject(py)?.into(),
                 vars,
             };
             Ok(Self {
@@ -2375,7 +2351,7 @@ impl Wrappable<Sentence> for AliasDecl {
                 .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             let symbol = Symbol {
-                name: id.value(),
+                name: id.into_pyobject(py)?.into(),
                 vars,
             };
             Ok(Self {
@@ -2632,7 +2608,7 @@ impl Claim {
 
 #[pyclass(name = "Module", get_all)]
 pub struct KoreModule {
-    name: String,
+    name: Py<PyString>,
     sentences: Vec<Sentence>,
     attrs: Vec<crate::kore::App>,
 }
@@ -2646,7 +2622,7 @@ impl<'py> IntoPyObject<'py> for crate::kore::Module {
         Bound::new(
             py,
             KoreModule {
-                name: self.id.value(),
+                name: self.id.into_pyobject(py)?.into(),
                 sentences: self.sentences,
                 attrs: self.attrs,
             },
@@ -2660,11 +2636,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::Module {
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
         let m = obj.cast::<KoreModule>()?;
         let borrow = m.borrow();
-        let id: Id = borrow
-            .name
-            .clone()
-            .try_into()
-            .map_err(PyValueError::new_err)?;
+        let id: Id = borrow.name.extract(obj.py())?;
         let attrs = borrow.attrs.clone();
         Ok(crate::kore::Module {
             id,
@@ -2680,12 +2652,12 @@ impl KoreModule {
     #[pyo3(signature = (name, sentences=None, attrs=None))]
     fn new_(
         py: Python<'_>,
-        name: Id,
+        name: Py<PyString>,
         sentences: Option<Vec<Sentence>>,
         attrs: Option<Vec<crate::kore::App>>,
     ) -> PyResult<Py<KoreModule>> {
         crate::kore::Module {
-            id: name,
+            id: name.extract(py)?,
             sentences: sentences.unwrap_or_default(),
             attrs: attrs.unwrap_or_default(),
         }
