@@ -156,6 +156,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Id {
     }
 }
 
+impl<'py> Id {
+    fn into_pysortvar(self, py: Python<'py>) -> PyResult<Py<SortVar>> {
+        Sort::Var(self)
+            .into_pyobject(py)?
+            .extract()
+            .map_err(Into::into)
+    }
+}
+
 impl<'a, 'py> FromPyObject<'a, 'py> for SetVarId {
     type Error = PyErr;
 
@@ -1794,12 +1803,7 @@ impl Wrappable<Sentence> for SortDecl {
         {
             let vars: Vec<Py<SortVar>> = vars
                 .into_iter()
-                .map(|id| {
-                    Sort::Var(id)
-                        .into_pyobject(py)?
-                        .extract()
-                        .map_err(Into::into)
-                })
+                .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
                 name: id.value(),
@@ -1873,12 +1877,7 @@ impl Wrappable<Sentence> for SymbolDecl {
         {
             let vars: Vec<Py<SortVar>> = vars
                 .into_iter()
-                .map(|id| {
-                    Sort::Var(id)
-                        .into_pyobject(py)?
-                        .extract()
-                        .map_err(Into::into)
-                })
+                .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             let symbol = Symbol {
                 name: id.value(),
@@ -1976,12 +1975,7 @@ impl Wrappable<Sentence> for AliasDecl {
         {
             let vars: Vec<Py<SortVar>> = vars
                 .into_iter()
-                .map(|id| {
-                    Sort::Var(id)
-                        .into_pyobject(py)?
-                        .extract()
-                        .map_err(Into::into)
-                })
+                .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             let symbol = Symbol {
                 name: id.value(),
@@ -2073,12 +2067,7 @@ impl Wrappable<Sentence> for Axiom {
         {
             let vars: Vec<Py<SortVar>> = vars
                 .into_iter()
-                .map(|id| {
-                    Sort::Var(id)
-                        .into_pyobject(py)?
-                        .extract()
-                        .map_err(Into::into)
-                })
+                .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
                 vars,
@@ -2141,12 +2130,7 @@ impl Wrappable<Sentence> for Claim {
         {
             let vars: Vec<Py<SortVar>> = vars
                 .into_iter()
-                .map(|id| {
-                    Sort::Var(id)
-                        .into_pyobject(py)?
-                        .extract()
-                        .map_err(Into::into)
-                })
+                .map(|id| id.into_pysortvar(py))
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
                 vars,
