@@ -128,9 +128,6 @@ where
     (SubClass, SubClass::BaseType): Into<PyClassInitializer<SubClass>>,
 {
     let s = SubClass::as_wrap(py, &it)?;
-    //let b = SubClass::BaseType::wrap_into(py, it)?;
-
-    //Ok(Bound::new(py, (s, b))?.cast_into::<SubClass::BaseType>()?)
     convert_with_wrapped(py, it, s)
 }
 
@@ -151,7 +148,7 @@ where
 }
 
 // ==========================================
-// FromPyObject impls for kore::syntax elements
+// Into/FromPyObject impls for kore::syntax structs
 // ==========================================
 
 impl<'a, 'py> FromPyObject<'a, 'py> for Id {
@@ -243,6 +240,88 @@ impl<'py> IntoPyObject<'py> for SymbolId {
         Ok(PyString::new(py, &self.value()))
     }
 }
+
+impl<'py> IntoPyObject<'py> for Var {
+    type Target = EVar;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::Var(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Var {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<EVar>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::Var(var) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into Var: {:?}",
+                obj
+            )));
+        };
+        Ok(var)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for SVar {
+    type Target = PySVar;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::SVar(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for SVar {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<PySVar>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::SVar(svar) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into SVar, {:?}",
+                obj
+            )));
+        };
+        Ok(svar)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for crate::kore::App {
+    type Target = App;
+    type Output = Bound<'py, App>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let pat = Pattern::App(self);
+        Ok(pat.into_pyobject(py)?.cast_into()?)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::App {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let var = obj.cast::<App>()?.borrow();
+        let pat = *var.as_super().wrapped.clone();
+        let Pattern::App(app) = pat else {
+            return Err(PyTypeError::new_err(format!(
+                "Error converting python object into App: {:?}",
+                obj
+            )));
+        };
+        Ok(app)
+    }
+}
+
 // ==========================================
 // Sort bindings
 // ==========================================
@@ -442,9 +521,7 @@ pub struct PyPattern {
 
 impl<'py> IntoPyObject<'py> for Pattern {
     type Target = PyPattern;
-
     type Output = Bound<'py, Self::Target>;
-
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
@@ -589,33 +666,6 @@ impl EVar {
     }
 }
 
-impl<'py> IntoPyObject<'py> for Var {
-    type Target = EVar;
-    type Output = Bound<'py, Self::Target>;
-    type Error = PyErr;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let pat = Pattern::Var(self);
-        Ok(pat.into_pyobject(py)?.cast_into()?)
-    }
-}
-
-impl<'a, 'py> FromPyObject<'a, 'py> for Var {
-    type Error = PyErr;
-
-    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
-        let var = obj.cast::<EVar>()?.borrow();
-        let pat = *var.as_super().wrapped.clone();
-        let Pattern::Var(var) = pat else {
-            return Err(PyTypeError::new_err(format!(
-                "Error converting python object into Var: {:?}",
-                obj
-            )));
-        };
-        Ok(var)
-    }
-}
-
 // --- SVar ---
 
 #[pyclass(extends = PyPattern, name = "SVar", get_all)]
@@ -677,33 +727,6 @@ impl PySVar {
         annotations.set_item("name", py.get_type::<PyString>())?;
         annotations.set_item("sort", py.get_type::<PySort>())?;
         Ok(annotations)
-    }
-}
-
-impl<'py> IntoPyObject<'py> for SVar {
-    type Target = PySVar;
-    type Output = Bound<'py, Self::Target>;
-    type Error = PyErr;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let pat = Pattern::SVar(self);
-        Ok(pat.into_pyobject(py)?.cast_into()?)
-    }
-}
-
-impl<'a, 'py> FromPyObject<'a, 'py> for SVar {
-    type Error = PyErr;
-
-    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
-        let var = obj.cast::<PySVar>()?.borrow();
-        let pat = *var.as_super().wrapped.clone();
-        let Pattern::SVar(svar) = pat else {
-            return Err(PyTypeError::new_err(format!(
-                "Error converting python object into SVar, {:?}",
-                obj
-            )));
-        };
-        Ok(svar)
     }
 }
 
@@ -837,33 +860,6 @@ impl App {
         annotations.set_item("sorts", py.get_type::<PyTuple>())?;
         annotations.set_item("args", py.get_type::<PyTuple>())?;
         Ok(annotations)
-    }
-}
-
-impl<'py> IntoPyObject<'py> for crate::kore::App {
-    type Target = App;
-    type Output = Bound<'py, App>;
-    type Error = PyErr;
-
-    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let pat = Pattern::App(self);
-        Ok(pat.into_pyobject(py)?.cast_into()?)
-    }
-}
-
-impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::App {
-    type Error = PyErr;
-
-    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
-        let var = obj.cast::<App>()?.borrow();
-        let pat = *var.as_super().wrapped.clone();
-        let Pattern::App(app) = pat else {
-            return Err(PyTypeError::new_err(format!(
-                "Error converting python object into App: {:?}",
-                obj
-            )));
-        };
-        Ok(app)
     }
 }
 
