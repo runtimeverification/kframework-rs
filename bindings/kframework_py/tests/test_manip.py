@@ -80,6 +80,7 @@ def test_app_let():
     new_args2 = [two, one, three]
     new_app2 = app.let_patterns(new_args2)
 
+    assert app.patterns == (one, two, three)
     assert new_app.args == new_args
     assert new_app2.args == tuple(new_args2)
 
@@ -96,6 +97,7 @@ def test_leftassoc_let():
     new_args2 = [two, one, three]
     new_app2 = leftassoc.let_patterns(new_args2)
 
+    assert leftassoc.patterns == (one, two, three)
     assert new_app.args == new_args
     assert new_app2.args == tuple(new_args2)
 
@@ -112,6 +114,7 @@ def test_rightassoc_let():
     new_args2 = [two, one, three]
     new_app2 = rightassoc.let_patterns(new_args2)
 
+    assert rightassoc.patterns == (one, two, three)
     assert new_app.args == new_args
     assert new_app2.args == tuple(new_args2)
 
