@@ -656,7 +656,47 @@ impl PyPattern {
 #[pyclass(extends = PyPattern, get_all)]
 pub struct EVar {
     name: Py<PyString>,
-    sort: Sort,
+    sort: Py<PySort>,
+}
+
+#[pymethods]
+impl EVar {
+    #[new]
+    fn new_(py: Python<'_>, name: Py<PyString>, sort: Py<PySort>) -> PyResult<Py<PyPattern>> {
+        Self { name, sort }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (name=None, sort=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        name: Option<Py<PyString>>,
+        sort: Option<Py<PySort>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        Self::new_(py, name, sort)
+    }
+
+    fn let_patterns(
+        slf: Bound<'_, Self>,
+        _patterns: Bound<'_, PyTuple>,
+    ) -> PyResult<Py<PyPattern>> {
+        Ok(slf.cast_into()?.into())
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> Py<PyTuple> {
+        PyTuple::empty(py).into()
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("name", py.get_type::<PyString>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        Ok(annotations)
+    }
 }
 
 impl Wrappable<Pattern> for EVar {
@@ -664,7 +704,7 @@ impl Wrappable<Pattern> for EVar {
         if let Pattern::Var(var) = it {
             Ok(Self {
                 name: var.id.into_pyobject(py)?.into(),
-                sort: var.sort,
+                sort: var.sort.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -678,32 +718,52 @@ impl<'py> IntoPyObject<'py> for EVar {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id = self.name.extract(py)?;
         let var = Var {
-            id,
-            sort: self.sort.clone(),
+            id: self.name.extract(py)?,
+            sort: self.sort.extract(py)?,
         };
         let pat = Pattern::Var(var);
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- SVar ---
+
+#[pyclass(extends = PyPattern, name = "SVar", get_all)]
+pub struct PySVar {
+    name: Py<PyString>,
+    sort: Py<PySort>,
+}
+
 #[pymethods]
-impl EVar {
+impl PySVar {
     #[new]
-    fn new_(py: Python<'_>, name: Py<PyString>, sort: Sort) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, name: Py<PyString>, sort: Py<PySort>) -> PyResult<Py<PyPattern>> {
         Self { name, sort }.into_pyobject(py).map(Bound::unbind)
     }
 
+    #[pyo3(signature = (name=None, sort=None))]
     fn r#let(
         &self,
         py: Python<'_>,
         name: Option<Py<PyString>>,
-        sort: Option<Sort>,
+        sort: Option<Py<PySort>>,
     ) -> PyResult<Py<PyPattern>> {
         let name = name.unwrap_or_else(|| self.name.clone_ref(py));
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
         Self::new_(py, name, sort)
+    }
+
+    fn let_patterns(
+        slf: Bound<'_, Self>,
+        _patterns: Bound<'_, PyTuple>,
+    ) -> PyResult<Py<PyPattern>> {
+        Ok(slf.cast_into()?.into())
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> Py<PyTuple> {
+        PyTuple::empty(py).into()
     }
 
     #[classattr]
@@ -715,20 +775,12 @@ impl EVar {
     }
 }
 
-// --- SVar ---
-
-#[pyclass(extends = PyPattern, name = "SVar", get_all)]
-pub struct PySVar {
-    name: Py<PyString>,
-    sort: Sort,
-}
-
 impl Wrappable<Pattern> for PySVar {
     fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::SVar(svar) = it {
             Ok(Self {
                 name: svar.id.into_pyobject(py)?.into(),
-                sort: svar.sort,
+                sort: svar.sort.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -742,40 +794,12 @@ impl<'py> IntoPyObject<'py> for PySVar {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id: SetVarId = self.name.extract(py)?;
         let svar = SVar {
-            id,
-            sort: self.sort.clone(),
+            id: self.name.extract(py)?,
+            sort: self.sort.extract(py)?,
         };
         let pat = Pattern::SVar(svar);
         convert_with_wrapped(py, pat, self)
-    }
-}
-
-#[pymethods]
-impl PySVar {
-    #[new]
-    fn new_(py: Python<'_>, name: Py<PyString>, sort: Sort) -> PyResult<Py<PyPattern>> {
-        Self { name, sort }.into_pyobject(py).map(Bound::unbind)
-    }
-
-    fn r#let(
-        &self,
-        py: Python<'_>,
-        name: Option<Py<PyString>>,
-        sort: Option<Sort>,
-    ) -> PyResult<Py<PyPattern>> {
-        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
-        Self::new_(py, name, sort)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("name", py.get_type::<PyString>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        Ok(annotations)
     }
 }
 
@@ -784,6 +808,39 @@ impl PySVar {
 #[pyclass(extends = PyPattern, name = "String", get_all)]
 pub struct KoreString {
     value: Py<PyString>,
+}
+
+#[pymethods]
+impl KoreString {
+    #[new]
+    fn new_(py: Python<'_>, value: Py<PyString>) -> PyResult<Py<PyPattern>> {
+        Self { value }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (value=None))]
+    fn r#let(&self, py: Python<'_>, value: Option<Py<PyString>>) -> PyResult<Py<PyPattern>> {
+        let value = value.unwrap_or_else(|| self.value.clone_ref(py));
+        Self::new_(py, value)
+    }
+
+    fn let_patterns(
+        slf: Bound<'_, Self>,
+        _patterns: Bound<'_, PyTuple>,
+    ) -> PyResult<Py<PyPattern>> {
+        Ok(slf.cast_into()?.into())
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> Py<PyTuple> {
+        PyTuple::empty(py).into()
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("value", py.get_type::<PyString>())?;
+        Ok(annotations)
+    }
 }
 
 impl Wrappable<Pattern> for KoreString {
@@ -807,26 +864,6 @@ impl<'py> IntoPyObject<'py> for KoreString {
         let str = self.value.extract(py)?;
         let pat = Pattern::Str(str);
         convert_with_wrapped(py, pat, self)
-    }
-}
-
-#[pymethods]
-impl KoreString {
-    #[new]
-    fn new_(py: Python<'_>, value: Py<PyString>) -> PyResult<Py<PyPattern>> {
-        Self { value }.into_pyobject(py).map(Bound::unbind)
-    }
-
-    fn r#let(&self, py: Python<'_>, value: Option<Py<PyString>>) -> PyResult<Py<PyPattern>> {
-        let value = value.unwrap_or_else(|| self.value.clone_ref(py));
-        Self::new_(py, value)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("value", py.get_type::<PyString>())?;
-        Ok(annotations)
     }
 }
 

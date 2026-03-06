@@ -32,6 +32,45 @@ def test_sortapp_let():
     with pytest.raises(TypeError):
         sortapp.let(name=1)
 
+def test_evar_let():
+    evar = EVar("X", sort_kitem)
+
+    new_evar = evar.let(sort=sort_int)
+    new_evar2 = evar.let_patterns(())
+
+    assert evar.patterns == ()
+    assert new_evar == EVar("X", sort_int)
+    assert new_evar2 is evar
+
+    with pytest.raises(TypeError):
+        evar.let(sort="SortBool")
+
+def test_svar_let():
+    svar = SVar("@Y", sort_kitem)
+
+    new_svar = svar.let(sort=sort_int)
+    new_svar2 = svar.let_patterns(())
+
+    assert svar.patterns == ()
+    assert new_svar == SVar("@Y", sort_int)
+    assert new_svar2 is svar
+
+    with pytest.raises(TypeError):
+        svar.let(sort="SortApp")
+
+def test_string_let():
+    string = String("Kore String")
+
+    new_string = string.let(value="A different kore string")
+    new_string2 = string.let_patterns(())
+
+    assert string.patterns == ()
+    assert new_string == String("A different kore string")
+    assert new_string2 is string
+
+    with pytest.raises(TypeError):
+        string.let(value=45)
+
 def test_app_let():
     app = App("LblProduction", (sort_int, sort_int, sort_int), (one, two, three))
 
