@@ -372,11 +372,6 @@ impl<'a, 'py> FromPyObject<'a, 'py> for crate::kore::App {
 // Sort bindings
 // ==========================================
 
-#[pyclass(subclass, name = "Sort")]
-pub struct PySort {
-    wrapped: Box<Sort>,
-}
-
 impl<'py> IntoPyObject<'py> for Sort {
     type Target = PySort;
     type Output = Bound<'py, Self::Target>;
@@ -400,12 +395,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Sort {
     }
 }
 
-impl Wrappable<Sort> for PySort {
-    fn wrap_into(_py: Python<'_>, rust: Sort) -> PyResult<Self> {
-        Ok(Self {
-            wrapped: rust.into(),
-        })
-    }
+#[pyclass(subclass, name = "Sort")]
+pub struct PySort {
+    wrapped: Box<Sort>,
 }
 
 #[pymethods]
@@ -438,9 +430,38 @@ impl PySort {
     }
 }
 
+impl Wrappable<Sort> for PySort {
+    fn wrap_into(_py: Python<'_>, rust: Sort) -> PyResult<Self> {
+        Ok(Self {
+            wrapped: rust.into(),
+        })
+    }
+}
+
 #[pyclass(extends = PySort, get_all)]
 pub struct SortVar {
     name: Py<PyString>,
+}
+
+#[pymethods]
+impl SortVar {
+    #[new]
+    fn new_(py: Python<'_>, name: Py<PyString>) -> PyResult<Py<PySort>> {
+        Self { name }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (name=None))]
+    fn r#let(&self, py: Python<'_>, name: Option<Py<PyString>>) -> PyResult<Py<PySort>> {
+        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
+        Self::new_(py, name)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let var_annotations = PyDict::new(py);
+        var_annotations.set_item("name", py.get_type::<PyString>())?;
+        Ok(var_annotations)
+    }
 }
 
 impl Wrappable<Sort> for SortVar {
@@ -467,31 +488,48 @@ impl<'py> IntoPyObject<'py> for SortVar {
     }
 }
 
+#[pyclass(extends = PySort, get_all)]
+pub struct SortApp {
+    name: Py<PyString>,
+    sorts: Py<PyTuple>,
+}
+
 #[pymethods]
-impl SortVar {
+impl SortApp {
     #[new]
-    fn new_(py: Python<'_>, name: Py<PyString>) -> PyResult<Py<PySort>> {
-        Self { name }.into_pyobject(py).map(Bound::unbind)
+    #[pyo3(signature = (name, sorts=None))]
+    fn new_(
+        py: Python<'_>,
+        name: Py<PyString>,
+        sorts: Option<Py<PySequence>>,
+    ) -> PyResult<Py<PySort>> {
+        Self {
+            name,
+            sorts: maybe_seq_to_tuple(py, sorts)?,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
     }
 
-    #[pyo3(signature = (name=None))]
-    fn r#let(&self, py: Python<'_>, name: Option<Py<PyString>>) -> PyResult<Py<PySort>> {
+    #[pyo3(signature = (name=None, sorts=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        name: Option<Py<PyString>>,
+        sorts: Option<Py<PySequence>>,
+    ) -> PyResult<Py<PySort>> {
         let name = name.unwrap_or_else(|| self.name.clone_ref(py));
-        Self::new_(py, name)
+        let sorts = sorts.or_else(|| Some(py_tuple_to_sequence(py, &self.sorts)));
+        Self::new_(py, name, sorts)
     }
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let var_annotations = PyDict::new(py);
-        var_annotations.set_item("name", py.get_type::<PyString>())?;
-        Ok(var_annotations)
+        let app_annotations = PyDict::new(py);
+        app_annotations.set_item("name", py.get_type::<PyString>())?;
+        app_annotations.set_item("sorts", py.get_type::<PyTuple>())?;
+        Ok(app_annotations)
     }
-}
-
-#[pyclass(extends = PySort, get_all)]
-pub struct SortApp {
-    name: Py<PyString>,
-    sorts: Vec<Sort>,
 }
 
 impl Wrappable<Sort> for SortApp {
@@ -499,7 +537,7 @@ impl Wrappable<Sort> for SortApp {
         if let Sort::App { id, args } = it {
             Ok(Self {
                 name: PyString::new(py, &id.value()).into(),
-                sorts: args,
+                sorts: vec_to_pytuple(py, args)?,
             })
         } else {
             Self::error(it)
@@ -513,46 +551,11 @@ impl<'py> IntoPyObject<'py> for SortApp {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id: Id = self.name.extract(py)?;
         let app = Sort::App {
-            id,
-            args: self.sorts.to_vec(),
+            id: self.name.extract(py)?,
+            args: self.sorts.extract(py)?,
         };
         convert_with_wrapped(py, app, self)
-    }
-}
-
-#[pymethods]
-impl SortApp {
-    #[new]
-    #[pyo3(signature = (name, sorts=None))]
-    fn new_(py: Python<'_>, name: Py<PyString>, sorts: Option<Vec<Sort>>) -> PyResult<Py<PySort>> {
-        Self {
-            name,
-            sorts: sorts.unwrap_or_default(),
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    #[pyo3(signature = (name=None, sorts=None))]
-    fn r#let(
-        &self,
-        py: Python<'_>,
-        name: Option<Py<PyString>>,
-        sorts: Option<Vec<Sort>>,
-    ) -> PyResult<Py<PySort>> {
-        let name = name.unwrap_or_else(|| self.name.clone_ref(py));
-        let sorts = sorts.unwrap_or_else(|| self.sorts.clone());
-        Self::new_(py, name, Some(sorts))
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let app_annotations = PyDict::new(py);
-        app_annotations.set_item("name", py.get_type::<PyString>())?;
-        app_annotations.set_item("sorts", py.get_type::<PyTuple>())?;
-        Ok(app_annotations)
     }
 }
 

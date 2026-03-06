@@ -14,6 +14,24 @@ from kframework_py.kore.syntax import Module, Definition
 sort_int, sort_kitem = [SortApp(s, ()) for s in ["SortInt", "SortKItem"]]
 one, two, three = [DV(sort_int, s) for s in ["1", "2", "3"]]
 
+def test_sortvar_let():
+    sortvar = SortVar("SortA")
+
+    new_sort = sortvar.let(name="SortB")
+    assert new_sort == SortVar("SortB")
+
+    with pytest.raises(TypeError):
+        sortvar.let(name=1)
+
+def test_sortapp_let():
+    sortapp = SortApp("SortApp", (sort_int, sort_kitem))
+
+    new_sort = sortapp.let(sorts=(sort_kitem,))
+    assert new_sort == SortApp("SortApp", (sort_kitem,))
+
+    with pytest.raises(TypeError):
+        sortapp.let(name=1)
+
 def test_app_let():
     app = App("LblProduction", (sort_int, sort_int, sort_int), (one, two, three))
 
