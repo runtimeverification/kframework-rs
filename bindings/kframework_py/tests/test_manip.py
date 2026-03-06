@@ -118,3 +118,31 @@ def test_rightassoc_let():
     with pytest.raises(TypeError):
         bad_args = (1, 2, 3)
         rightassoc.let_patterns(bad_args)
+
+def test_top_let():
+    top = Top(sort_kitem)
+
+    new_top = top.let(sort=sort_int)
+
+    new_top2 = top.let_patterns(())
+
+    assert top.patterns == ()
+    assert new_top.sort == sort_int
+    assert new_top2 is top
+
+    with pytest.raises(TypeError):
+        top.let(sort="SortInt")
+
+def test_bottom_let():
+    bottom = Bottom(sort_kitem)
+
+    new_bottom = bottom.let(sort=sort_int)
+
+    new_bottom2 = bottom.let_patterns(())
+
+    assert bottom.patterns == ()
+    assert new_bottom.sort == sort_int
+    assert new_bottom2 is bottom
+
+    with pytest.raises(TypeError):
+        bottom.let(sort="SortInt")
