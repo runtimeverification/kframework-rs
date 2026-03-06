@@ -1742,50 +1742,63 @@ impl<'py> IntoPyObject<'py> for Rewrites {
     }
 }
 
+// --- And ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct And {
+    sort: Py<PySort>,
+    ops: Py<PyTuple>,
+}
+
 #[pymethods]
-impl Rewrites {
+impl And {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, left: Pattern, right: Pattern) -> PyResult<Py<PyPattern>> {
-        Self { sort, left, right }
-            .into_pyobject(py)
-            .map(Bound::unbind)
+    fn new_(py: Python<'_>, sort: Py<PySort>, ops: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        Self {
+            sort,
+            ops: seq_to_tuple(py, ops)?,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (sort=None, ops=None))]
     fn r#let(
         &self,
         py: Python<'_>,
-        sort: Option<Sort>,
-        left: Option<Pattern>,
-        right: Option<Pattern>,
+        sort: Option<Py<PySort>>,
+        ops: Option<Py<PySequence>>,
     ) -> PyResult<Py<PyPattern>> {
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
-        let left = left.unwrap_or_else(|| self.left.clone());
-        let right = right.unwrap_or_else(|| self.right.clone());
-        Self::new_(py, sort, left, right)
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let ops = ops.unwrap_or_else(|| py_tuple_to_sequence(py, &self.ops));
+        Self::new_(py, sort, ops)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        slf.borrow().r#let(slf.py(), None, Some(patterns))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(self.ops.clone_ref(py))
     }
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let annotations = PyDict::new(py);
         annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        annotations.set_item("ops", py.get_type::<PyTuple>())?;
         Ok(annotations)
     }
 }
 
-// --- And ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct And {
-    sort: Sort,
-    ops: Vec<Pattern>,
-}
-
 impl Wrappable<Pattern> for And {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::And { sort, ops } = it {
-            Ok(Self { sort, ops })
+            Ok(Self {
+                sort: sort.into_pyobject(py)?.into(),
+                ops: vec_to_pytuple(py, ops)?,
+            })
         } else {
             Self::error(it)
         }
@@ -1799,29 +1812,52 @@ impl<'py> IntoPyObject<'py> for And {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::And {
-            sort: self.sort.clone(),
-            ops: self.ops.to_vec(),
+            sort: self.sort.extract(py)?,
+            ops: self.ops.extract(py)?,
         };
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- Or ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct Or {
+    sort: Py<PySort>,
+    ops: Py<PyTuple>,
+}
+
 #[pymethods]
-impl And {
+impl Or {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, ops: Vec<Pattern>) -> PyResult<Py<PyPattern>> {
-        Self { sort, ops }.into_pyobject(py).map(Bound::unbind)
+    fn new_(py: Python<'_>, sort: Py<PySort>, ops: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        Self {
+            sort,
+            ops: seq_to_tuple(py, ops)?,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (sort=None, ops=None))]
     fn r#let(
         &self,
         py: Python<'_>,
-        sort: Option<Sort>,
-        ops: Option<Vec<Pattern>>,
+        sort: Option<Py<PySort>>,
+        ops: Option<Py<PySequence>>,
     ) -> PyResult<Py<PyPattern>> {
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
-        let ops = ops.unwrap_or_else(|| self.ops.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let ops = ops.unwrap_or_else(|| py_tuple_to_sequence(py, &self.ops));
         Self::new_(py, sort, ops)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        slf.borrow().r#let(slf.py(), None, Some(patterns))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(self.ops.clone_ref(py))
     }
 
     #[classattr]
@@ -1833,18 +1869,13 @@ impl And {
     }
 }
 
-// --- Or ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct Or {
-    sort: Sort,
-    ops: Vec<Pattern>,
-}
-
 impl Wrappable<Pattern> for Or {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Or { sort, ops } = it {
-            Ok(Self { sort, ops })
+            Ok(Self {
+                sort: sort.into_pyobject(py)?.into(),
+                ops: vec_to_pytuple(py, ops)?,
+            })
         } else {
             Self::error(it)
         }
@@ -1858,8 +1889,8 @@ impl<'py> IntoPyObject<'py> for Or {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Or {
-            sort: self.sort.clone(),
-            ops: self.ops.to_vec(),
+            sort: self.sort.extract(py)?,
+            ops: self.ops.extract(py)?,
         };
         convert_with_wrapped(py, pat, self)
     }
