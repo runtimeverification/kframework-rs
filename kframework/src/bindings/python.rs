@@ -1488,18 +1488,66 @@ impl<'py> IntoPyObject<'py> for Next {
 
 #[pyclass(extends = PyPattern, get_all)]
 pub struct Implies {
-    sort: Sort,
-    left: Pattern,
-    right: Pattern,
+    sort: Py<PySort>,
+    left: Py<PyPattern>,
+    right: Py<PyPattern>,
+}
+
+#[pymethods]
+impl Implies {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        sort: Py<PySort>,
+        left: Py<PyPattern>,
+        right: Py<PyPattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        Self { sort, left, right }
+            .into_pyobject(py)
+            .map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (sort=None, left=None, right=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        sort: Option<Py<PySort>>,
+        left: Option<Py<PyPattern>>,
+        right: Option<Py<PyPattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let left = left.unwrap_or_else(|| self.left.clone_ref(py));
+        let right = right.unwrap_or_else(|| self.right.clone_ref(py));
+        Self::new_(py, sort, left, right)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [left, right] = patterns.extract(slf.py())?;
+        slf.borrow().r#let(slf.py(), None, Some(left), Some(right))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.left.clone_ref(py), self.right.clone_ref(py)])?.into())
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
 }
 
 impl Wrappable<Pattern> for Implies {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Implies { sort, left, right } = it {
             Ok(Self {
-                sort,
-                left: *left,
-                right: *right,
+                sort: sort.into_pyobject(py)?.into(),
+                left: left.into_pyobject(py)?.into(),
+                right: right.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -1514,34 +1562,59 @@ impl<'py> IntoPyObject<'py> for Implies {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Implies {
-            sort: self.sort.clone(),
-            left: self.left.clone().into(),
-            right: self.right.clone().into(),
+            sort: self.sort.extract(py)?,
+            left: self.left.extract::<Pattern>(py)?.into(),
+            right: self.right.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- Iff ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct Iff {
+    sort: Py<PySort>,
+    left: Py<PyPattern>,
+    right: Py<PyPattern>,
+}
+
 #[pymethods]
-impl Implies {
+impl Iff {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, left: Pattern, right: Pattern) -> PyResult<Py<PyPattern>> {
+    fn new_(
+        py: Python<'_>,
+        sort: Py<PySort>,
+        left: Py<PyPattern>,
+        right: Py<PyPattern>,
+    ) -> PyResult<Py<PyPattern>> {
         Self { sort, left, right }
             .into_pyobject(py)
             .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (sort=None, left=None, right=None))]
     fn r#let(
         &self,
         py: Python<'_>,
-        sort: Option<Sort>,
-        left: Option<Pattern>,
-        right: Option<Pattern>,
+        sort: Option<Py<PySort>>,
+        left: Option<Py<PyPattern>>,
+        right: Option<Py<PyPattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
-        let left = left.unwrap_or_else(|| self.left.clone());
-        let right = right.unwrap_or_else(|| self.right.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let left = left.unwrap_or_else(|| self.left.clone_ref(py));
+        let right = right.unwrap_or_else(|| self.right.clone_ref(py));
         Self::new_(py, sort, left, right)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [left, right] = patterns.extract(slf.py())?;
+        slf.borrow().r#let(slf.py(), None, Some(left), Some(right))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.left.clone_ref(py), self.right.clone_ref(py)])?.into())
     }
 
     #[classattr]
@@ -1554,22 +1627,13 @@ impl Implies {
     }
 }
 
-// --- Iff ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct Iff {
-    sort: Sort,
-    left: Pattern,
-    right: Pattern,
-}
-
 impl Wrappable<Pattern> for Iff {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Iff { sort, left, right } = it {
             Ok(Self {
-                sort,
-                left: *left,
-                right: *right,
+                sort: sort.into_pyobject(py)?.into(),
+                left: left.into_pyobject(py)?.into(),
+                right: right.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -1584,34 +1648,59 @@ impl<'py> IntoPyObject<'py> for Iff {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Iff {
-            sort: self.sort.clone(),
-            left: self.left.clone().into(),
-            right: self.right.clone().into(),
+            sort: self.sort.extract(py)?,
+            left: self.left.extract::<Pattern>(py)?.into(),
+            right: self.right.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- Rewrites ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct Rewrites {
+    sort: Py<PySort>,
+    left: Py<PyPattern>,
+    right: Py<PyPattern>,
+}
+
 #[pymethods]
-impl Iff {
+impl Rewrites {
     #[new]
-    fn new_(py: Python<'_>, sort: Sort, left: Pattern, right: Pattern) -> PyResult<Py<PyPattern>> {
+    fn new_(
+        py: Python<'_>,
+        sort: Py<PySort>,
+        left: Py<PyPattern>,
+        right: Py<PyPattern>,
+    ) -> PyResult<Py<PyPattern>> {
         Self { sort, left, right }
             .into_pyobject(py)
             .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (sort=None, left=None, right=None))]
     fn r#let(
         &self,
         py: Python<'_>,
-        sort: Option<Sort>,
-        left: Option<Pattern>,
-        right: Option<Pattern>,
+        sort: Option<Py<PySort>>,
+        left: Option<Py<PyPattern>>,
+        right: Option<Py<PyPattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
-        let left = left.unwrap_or_else(|| self.left.clone());
-        let right = right.unwrap_or_else(|| self.right.clone());
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let left = left.unwrap_or_else(|| self.left.clone_ref(py));
+        let right = right.unwrap_or_else(|| self.right.clone_ref(py));
         Self::new_(py, sort, left, right)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [left, right] = patterns.extract(slf.py())?;
+        slf.borrow().r#let(slf.py(), None, Some(left), Some(right))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.left.clone_ref(py), self.right.clone_ref(py)])?.into())
     }
 
     #[classattr]
@@ -1624,22 +1713,13 @@ impl Iff {
     }
 }
 
-// --- Rewrites ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct Rewrites {
-    sort: Sort,
-    left: Pattern,
-    right: Pattern,
-}
-
 impl Wrappable<Pattern> for Rewrites {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Rewrites { sort, left, right } = it {
             Ok(Self {
-                sort,
-                left: *left,
-                right: *right,
+                sort: sort.into_pyobject(py)?.into(),
+                left: left.into_pyobject(py)?.into(),
+                right: right.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -1654,9 +1734,9 @@ impl<'py> IntoPyObject<'py> for Rewrites {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Rewrites {
-            sort: self.sort.clone(),
-            left: self.left.clone().into(),
-            right: self.right.clone().into(),
+            sort: self.sort.extract(py)?,
+            left: self.left.extract::<Pattern>(py)?.into(),
+            right: self.right.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
     }
