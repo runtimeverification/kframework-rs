@@ -832,8 +832,62 @@ impl KoreString {
 #[pyclass(extends = PyPattern, name = "App", get_all)]
 pub struct App {
     symbol: Py<PyString>,
-    sorts: Vec<Sort>,
-    args: Vec<Pattern>,
+    sorts: Py<PyTuple>,
+    args: Py<PyTuple>,
+}
+
+#[pymethods]
+impl App {
+    #[new]
+    #[pyo3(signature = (symbol, sorts=None, args=None))]
+    fn new_(
+        py: Python<'_>,
+        symbol: Py<PyString>,
+        sorts: Option<Py<PySequence>>,
+        args: Option<Py<PySequence>>,
+    ) -> PyResult<Py<PyPattern>> {
+        Self {
+            symbol,
+            sorts: maybe_seq_to_tuple(py, sorts)?,
+            args: maybe_seq_to_tuple(py, args)?,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (symbol=None, sorts=None, args=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        symbol: Option<Py<PyString>>,
+        sorts: Option<Py<PySequence>>,
+        args: Option<Py<PySequence>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
+        let sorts = sorts.or_else(|| Some(py_tuple_to_sequence(py, &self.sorts)));
+        let args = args.or_else(|| Some(py_tuple_to_sequence(py, &self.args)));
+        Self::new_(py, symbol, sorts, args)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let kwargs = &[("args", patterns)].into_py_dict(slf.py())?;
+        let res = slf.call_method("let", (), Some(kwargs))?;
+        Ok(res.cast_into::<PyPattern>()?.unbind())
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> Py<PyTuple> {
+        self.args.clone_ref(py)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("symbol", py.get_type::<PyString>())?;
+        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
+        annotations.set_item("args", py.get_type::<PyTuple>())?;
+        Ok(annotations)
+    }
 }
 
 impl Wrappable<Pattern> for App {
@@ -841,8 +895,8 @@ impl Wrappable<Pattern> for App {
         if let Pattern::App(app) = it {
             Ok(Self {
                 symbol: app.symbol.into_pyobject(py)?.into(),
-                sorts: app.sorts,
-                args: app.args,
+                sorts: vec_to_pytuple(py, app.sorts)?,
+                args: vec_to_pytuple(py, app.args)?,
             })
         } else {
             Self::error(it)
@@ -856,47 +910,67 @@ impl<'py> IntoPyObject<'py> for App {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let symbol = self.symbol.extract(py)?;
         let app = crate::kore::App {
-            symbol,
-            sorts: self.sorts.to_vec(),
-            args: self.args.to_vec(),
+            symbol: self.symbol.extract(py)?,
+            sorts: self.sorts.extract(py)?,
+            args: self.args.extract(py)?,
         };
         let pat = Pattern::App(app);
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- LeftAssoc ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct LeftAssoc {
+    symbol: Py<PyString>,
+    sorts: Py<PyTuple>,
+    args: Py<PyTuple>,
+}
+
 #[pymethods]
-impl App {
+impl LeftAssoc {
     #[new]
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
         symbol: Py<PyString>,
-        sorts: Option<Vec<Sort>>,
-        args: Option<Vec<Pattern>>,
+        sorts: Option<Py<PySequence>>,
+        args: Option<Py<PySequence>>,
     ) -> PyResult<Py<PyPattern>> {
         Self {
             symbol,
-            sorts: sorts.unwrap_or_default(),
-            args: args.unwrap_or_default(),
+            sorts: maybe_seq_to_tuple(py, sorts)?,
+            args: maybe_seq_to_tuple(py, args)?,
         }
         .into_pyobject(py)
         .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (symbol=None, sorts=None, args=None))]
     fn r#let(
         &self,
         py: Python<'_>,
         symbol: Option<Py<PyString>>,
-        sorts: Option<Vec<Sort>>,
-        args: Option<Vec<Pattern>>,
+        sorts: Option<Py<PySequence>>,
+        args: Option<Py<PySequence>>,
     ) -> PyResult<Py<PyPattern>> {
         let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
-        let sorts = sorts.or_else(|| Some(self.sorts.clone()));
-        let args = args.or_else(|| Some(self.args.clone()));
+        let sorts = sorts.or_else(|| Some(py_tuple_to_sequence(py, &self.sorts)));
+        let args = args.or_else(|| Some(py_tuple_to_sequence(py, &self.args)));
         Self::new_(py, symbol, sorts, args)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let kwargs = &[("args", patterns)].into_py_dict(slf.py())?;
+        let res = slf.call_method("let", (), Some(kwargs))?;
+        Ok(res.cast_into::<PyPattern>()?.unbind())
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> Py<PyTuple> {
+        self.args.clone_ref(py)
     }
 
     #[classattr]
@@ -909,22 +983,13 @@ impl App {
     }
 }
 
-// --- LeftAssoc ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct LeftAssoc {
-    symbol: Py<PyString>,
-    sorts: Vec<Sort>,
-    args: Vec<Pattern>,
-}
-
 impl Wrappable<Pattern> for LeftAssoc {
     fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::LeftAssoc(app) = it {
             Ok(Self {
                 symbol: app.symbol.into_pyobject(py)?.into(),
-                sorts: app.sorts,
-                args: app.args,
+                sorts: vec_to_pytuple(py, app.sorts)?,
+                args: vec_to_pytuple(py, app.args)?,
             })
         } else {
             Self::error(it)
@@ -938,47 +1003,67 @@ impl<'py> IntoPyObject<'py> for LeftAssoc {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let symbol = self.symbol.extract(py)?;
         let app = crate::kore::App {
-            symbol,
-            sorts: self.sorts.to_vec(),
-            args: self.args.to_vec(),
+            symbol: self.symbol.extract(py)?,
+            sorts: self.sorts.extract(py)?,
+            args: self.args.extract(py)?,
         };
         let pat = Pattern::LeftAssoc(app);
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- RightAssoc ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct RightAssoc {
+    symbol: Py<PyString>,
+    sorts: Py<PyTuple>,
+    args: Py<PyTuple>,
+}
+
 #[pymethods]
-impl LeftAssoc {
+impl RightAssoc {
     #[new]
     #[pyo3(signature = (symbol, sorts=None, args=None))]
     fn new_(
         py: Python<'_>,
         symbol: Py<PyString>,
-        sorts: Option<Vec<Sort>>,
-        args: Option<Vec<Pattern>>,
+        sorts: Option<Py<PySequence>>,
+        args: Option<Py<PySequence>>,
     ) -> PyResult<Py<PyPattern>> {
         Self {
             symbol,
-            sorts: sorts.unwrap_or_default(),
-            args: args.unwrap_or_default(),
+            sorts: maybe_seq_to_tuple(py, sorts)?,
+            args: maybe_seq_to_tuple(py, args)?,
         }
         .into_pyobject(py)
         .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (symbol=None, sorts=None, args=None))]
     fn r#let(
         &self,
         py: Python<'_>,
         symbol: Option<Py<PyString>>,
-        sorts: Option<Vec<Sort>>,
-        args: Option<Vec<Pattern>>,
+        sorts: Option<Py<PySequence>>,
+        args: Option<Py<PySequence>>,
     ) -> PyResult<Py<PyPattern>> {
         let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
-        let sorts = sorts.or_else(|| Some(self.sorts.clone()));
-        let args = args.or_else(|| Some(self.args.clone()));
+        let sorts = sorts.or_else(|| Some(py_tuple_to_sequence(py, &self.sorts)));
+        let args = args.or_else(|| Some(py_tuple_to_sequence(py, &self.args)));
         Self::new_(py, symbol, sorts, args)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let kwargs = &[("args", patterns)].into_py_dict(slf.py())?;
+        let res = slf.call_method("let", (), Some(kwargs))?;
+        Ok(res.cast_into::<PyPattern>()?.unbind())
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> Py<PyTuple> {
+        self.args.clone_ref(py)
     }
 
     #[classattr]
@@ -991,22 +1076,13 @@ impl LeftAssoc {
     }
 }
 
-// --- RightAssoc ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct RightAssoc {
-    symbol: Py<PyString>,
-    sorts: Vec<Sort>,
-    args: Vec<Pattern>,
-}
-
 impl Wrappable<Pattern> for RightAssoc {
     fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::RightAssoc(app) = it {
             Ok(Self {
                 symbol: app.symbol.into_pyobject(py)?.into(),
-                sorts: app.sorts,
-                args: app.args,
+                sorts: vec_to_pytuple(py, app.sorts)?,
+                args: vec_to_pytuple(py, app.args)?,
             })
         } else {
             Self::error(it)
@@ -1020,56 +1096,13 @@ impl<'py> IntoPyObject<'py> for RightAssoc {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let symbol = self.symbol.extract(py)?;
         let app = crate::kore::App {
-            symbol,
-            sorts: self.sorts.to_vec(),
-            args: self.args.to_vec(),
+            symbol: self.symbol.extract(py)?,
+            sorts: self.sorts.extract(py)?,
+            args: self.args.extract(py)?,
         };
         let pat = Pattern::RightAssoc(app);
         convert_with_wrapped(py, pat, self)
-    }
-}
-
-#[pymethods]
-impl RightAssoc {
-    #[new]
-    #[pyo3(signature = (symbol, sorts=None, args=None))]
-    fn new_(
-        py: Python<'_>,
-        symbol: Py<PyString>,
-        sorts: Option<Vec<Sort>>,
-        args: Option<Vec<Pattern>>,
-    ) -> PyResult<Py<PyPattern>> {
-        Self {
-            symbol,
-            sorts: sorts.unwrap_or_default(),
-            args: args.unwrap_or_default(),
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    fn r#let(
-        &self,
-        py: Python<'_>,
-        symbol: Option<Py<PyString>>,
-        sorts: Option<Vec<Sort>>,
-        args: Option<Vec<Pattern>>,
-    ) -> PyResult<Py<PyPattern>> {
-        let symbol = symbol.unwrap_or_else(|| self.symbol.clone_ref(py));
-        let sorts = sorts.or_else(|| Some(self.sorts.clone()));
-        let args = args.or_else(|| Some(self.args.clone()));
-        Self::new_(py, symbol, sorts, args)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("symbol", py.get_type::<PyString>())?;
-        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
-        annotations.set_item("args", py.get_type::<PyTuple>())?;
-        Ok(annotations)
     }
 }
 
