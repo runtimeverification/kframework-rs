@@ -4,8 +4,10 @@ use crate::kore::{Id, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Va
 use pyo3::{
     exceptions::{PyTypeError, PyValueError},
     prelude::*,
-    types::{PyBool, PyDict, PyFloat, PyInt, PyNone, PyString, PyTuple},
-    PyClass,
+    types::{
+        IntoPyDict, PyBool, PyDict, PyFloat, PyInt, PyList, PyNone, PySequence, PyString, PyTuple,
+    },
+    PyClass
 };
 use serde_json::Number;
 
@@ -97,6 +99,50 @@ fn pyobject_to_serde_value(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value
             obj
         )))
     }
+}
+
+// =========================
+// Python helper methods
+// =========================
+
+/// Make a [`PyTuple`] from a [`Vec<T>`]
+#[inline]
+fn vec_to_pytuple<'py, T>(py: Python<'py>, the_vec: Vec<T>) -> PyResult<Py<PyTuple>>
+where
+    T: IntoPyObject<'py>,
+{
+    Ok(the_vec
+        .into_pyobject(py)?
+        .cast_into::<PyList>()?
+        .to_tuple()
+        .into())
+}
+
+/// Make a [`PyTuple`] from a [`PySequence`]
+#[inline]
+fn seq_to_tuple(py: Python<'_>, seq: Py<PySequence>) -> PyResult<Py<PyTuple>>
+{
+    let tuple = seq.bind(py).to_tuple()?;
+    Ok(tuple.unbind())
+}
+
+/// Make a [`PyTuple`] from a [`Option<PySequence>`], making an empty tuple if it is [`None`]
+#[inline]
+fn maybe_seq_to_tuple(
+    py: Python<'_>,
+    seq: Option<Py<PySequence>>,
+) -> PyResult<Py<PyTuple>>
+{
+    seq.map_or_else(
+        || Ok(PyTuple::empty(py).unbind()),
+        |seq| seq_to_tuple(py, seq),
+    )
+}
+
+/// Make a [`PySequence`] from a [`PyTuple`]
+#[inline]
+fn py_tuple_to_sequence(py: Python<'_>, tuple: &Py<PyTuple>) -> Py<PySequence> {
+    tuple.bind(py).clone().into_sequence().unbind()
 }
 
 trait Wrappable<RustType>: Sized
