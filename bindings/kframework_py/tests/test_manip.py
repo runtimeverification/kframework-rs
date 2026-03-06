@@ -149,3 +149,16 @@ def test_bottom_let():
 
     with pytest.raises(TypeError):
         bottom.let(sort="SortInt")
+
+def test_dv_let():
+    dv = DV(sort_int, "1")
+
+    new_dv = dv.let(value="2")
+    new_dv2 = dv.let_patterns(())
+
+    assert dv.patterns == ()
+    assert new_dv.value == "2"
+    assert new_dv2 is dv
+
+    with pytest.raises(TypeError):
+        dv.let(value=2)
