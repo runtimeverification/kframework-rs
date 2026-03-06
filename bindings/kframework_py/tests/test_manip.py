@@ -162,3 +162,29 @@ def test_dv_let():
 
     with pytest.raises(TypeError):
         dv.let(value=2)
+
+def test_not_let():
+    not_ = Not(sort_int, one)
+
+    new_not = not_.let(pattern=two)
+    new_not2 = not_.let_patterns((three,))
+
+    assert not_.patterns == (one,)
+    assert new_not.pattern == two
+    assert new_not2 == Not(sort_int, three)
+
+    with pytest.raises(TypeError):
+        not_.let(sort="SortKItem")
+
+def test_next_let():
+    next_ = Next(sort_int, one)
+
+    new_next = next_.let(pattern=two)
+    new_next2 = next_.let_patterns((three,))
+
+    assert next_.patterns == (one,)
+    assert new_next.pattern == two
+    assert new_next2 == Next(sort_int, three)
+
+    with pytest.raises(TypeError):
+        next_.let(sort="SortKItem")
