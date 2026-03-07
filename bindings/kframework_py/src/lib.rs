@@ -102,10 +102,10 @@ mod kframework_py {
 
             #[pymodule_export]
             use kframework::bindings::python::{
-                AliasDecl, And, App, Axiom, Bottom, Ceil, Claim, DV, EVar, Equals, Exists, Floor,
+                AliasDecl, And, App, Axiom, Bottom, Ceil, Claim, EVar, Equals, Exists, Floor,
                 Forall, Iff, Implies, Import, In, KoreDefinition, KoreModule, KoreString,
-                LeftAssoc, Mu, Next, Not, Nu, Or, PyPattern, PySentence, PySort, Rewrites,
-                RightAssoc, SVar, SortApp, SortDecl, SortVar, Symbol, SymbolDecl, Top,
+                LeftAssoc, Mu, Next, Not, Nu, Or, PyPattern, PySVar, PySentence, PySort, Rewrites,
+                RightAssoc, SortApp, SortDecl, SortVar, Symbol, SymbolDecl, Top, DV,
             };
         }
     }
