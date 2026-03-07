@@ -2398,14 +2398,72 @@ impl<'py> IntoPyObject<'py> for Floor {
 
 #[pyclass(extends = PyPattern, get_all)]
 pub struct Equals {
-    op_sort: Sort,
-    sort: Sort,
-    left: Pattern,
-    right: Pattern,
+    op_sort: Py<PySort>,
+    sort: Py<PySort>,
+    left: Py<PyPattern>,
+    right: Py<PyPattern>,
+}
+
+#[pymethods]
+impl Equals {
+    #[new]
+    fn new_(
+        py: Python<'_>,
+        op_sort: Py<PySort>,
+        sort: Py<PySort>,
+        left: Py<PyPattern>,
+        right: Py<PyPattern>,
+    ) -> PyResult<Py<PyPattern>> {
+        Self {
+            op_sort,
+            sort,
+            left,
+            right,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (op_sort=None, sort=None, left=None, right=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        op_sort: Option<Py<PySort>>,
+        sort: Option<Py<PySort>>,
+        left: Option<Py<PyPattern>>,
+        right: Option<Py<PyPattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let op_sort = op_sort.unwrap_or_else(|| self.op_sort.clone_ref(py));
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let left = left.unwrap_or_else(|| self.left.clone_ref(py));
+        let right = right.unwrap_or_else(|| self.right.clone_ref(py));
+        Self::new_(py, op_sort, sort, left, right)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [left, right] = patterns.extract(slf.py())?;
+        slf.borrow()
+            .r#let(slf.py(), None, None, Some(left), Some(right))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.left.clone_ref(py), self.right.clone_ref(py)])?.into())
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("op_sort", py.get_type::<PySort>())?;
+        annotations.set_item("sort", py.get_type::<PySort>())?;
+        annotations.set_item("left", py.get_type::<PyPattern>())?;
+        annotations.set_item("right", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
 }
 
 impl Wrappable<Pattern> for Equals {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Equals {
             op_sort,
             sort,
@@ -2414,10 +2472,10 @@ impl Wrappable<Pattern> for Equals {
         } = it
         {
             Ok(Self {
-                op_sort,
-                sort,
-                left: *left,
-                right: *right,
+                op_sort: op_sort.into_pyobject(py)?.into(),
+                sort: sort.into_pyobject(py)?.into(),
+                left: left.into_pyobject(py)?.into(),
+                right: right.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -2432,24 +2490,34 @@ impl<'py> IntoPyObject<'py> for Equals {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Equals {
-            op_sort: self.op_sort.clone(),
-            sort: self.sort.clone(),
-            left: self.left.clone().into(),
-            right: self.right.clone().into(),
+            op_sort: self.op_sort.extract(py)?,
+            sort: self.sort.extract(py)?,
+            left: self.left.extract::<Pattern>(py)?.into(),
+            right: self.right.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- In ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct In {
+    op_sort: Py<PySort>,
+    sort: Py<PySort>,
+    left: Py<PyPattern>,
+    right: Py<PyPattern>,
+}
+
 #[pymethods]
-impl Equals {
+impl In {
     #[new]
     fn new_(
         py: Python<'_>,
-        op_sort: Sort,
-        sort: Sort,
-        left: Pattern,
-        right: Pattern,
+        op_sort: Py<PySort>,
+        sort: Py<PySort>,
+        left: Py<PyPattern>,
+        right: Py<PyPattern>,
     ) -> PyResult<Py<PyPattern>> {
         Self {
             op_sort,
@@ -2461,19 +2529,31 @@ impl Equals {
         .map(Bound::unbind)
     }
 
+    #[pyo3(signature = (op_sort=None, sort=None, left=None, right=None))]
     fn r#let(
         &self,
         py: Python<'_>,
-        op_sort: Option<Sort>,
-        sort: Option<Sort>,
-        left: Option<Pattern>,
-        right: Option<Pattern>,
+        op_sort: Option<Py<PySort>>,
+        sort: Option<Py<PySort>>,
+        left: Option<Py<PyPattern>>,
+        right: Option<Py<PyPattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let op_sort = op_sort.unwrap_or_else(|| self.op_sort.clone());
-        let sort = sort.unwrap_or_else(|| self.sort.clone());
-        let left = left.unwrap_or_else(|| self.left.clone());
-        let right = right.unwrap_or_else(|| self.right.clone());
+        let op_sort = op_sort.unwrap_or_else(|| self.op_sort.clone_ref(py));
+        let sort = sort.unwrap_or_else(|| self.sort.clone_ref(py));
+        let left = left.unwrap_or_else(|| self.left.clone_ref(py));
+        let right = right.unwrap_or_else(|| self.right.clone_ref(py));
         Self::new_(py, op_sort, sort, left, right)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [left, right] = patterns.extract(slf.py())?;
+        slf.borrow()
+            .r#let(slf.py(), None, None, Some(left), Some(right))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.left.clone_ref(py), self.right.clone_ref(py)])?.into())
     }
 
     #[classattr]
@@ -2487,18 +2567,8 @@ impl Equals {
     }
 }
 
-// --- In ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct In {
-    op_sort: Sort,
-    sort: Sort,
-    left: Pattern,
-    right: Pattern,
-}
-
 impl Wrappable<Pattern> for In {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::In {
             op_sort,
             sort,
@@ -2507,10 +2577,10 @@ impl Wrappable<Pattern> for In {
         } = it
         {
             Ok(Self {
-                op_sort,
-                sort,
-                left: *left,
-                right: *right,
+                op_sort: op_sort.into_pyobject(py)?.into(),
+                sort: sort.into_pyobject(py)?.into(),
+                left: left.into_pyobject(py)?.into(),
+                right: right.into_pyobject(py)?.into(),
             })
         } else {
             Self::error(it)
@@ -2525,43 +2595,12 @@ impl<'py> IntoPyObject<'py> for In {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::In {
-            op_sort: self.op_sort.clone(),
-            sort: self.sort.clone(),
-            left: self.left.clone().into(),
-            right: self.right.clone().into(),
+            op_sort: self.op_sort.extract(py)?,
+            sort: self.sort.extract(py)?,
+            left: self.left.extract::<Pattern>(py)?.into(),
+            right: self.right.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
-    }
-}
-
-#[pymethods]
-impl In {
-    #[new]
-    fn new_(
-        py: Python<'_>,
-        op_sort: Sort,
-        sort: Sort,
-        left: Pattern,
-        right: Pattern,
-    ) -> PyResult<Py<PyPattern>> {
-        Self {
-            op_sort,
-            sort,
-            left,
-            right,
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("op_sort", py.get_type::<PySort>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        Ok(annotations)
     }
 }
 
