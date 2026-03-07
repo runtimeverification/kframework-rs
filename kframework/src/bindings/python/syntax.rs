@@ -1,6 +1,5 @@
 use super::utils::{
-    maybe_seq_to_tuple, py_tuple_to_sequence, pyobject_to_serde_value, seq_to_tuple,
-    serde_value_to_pyobject, vec_to_pytuple,
+    maybe_seq_to_tuple, py_tuple_to_sequence, seq_to_tuple, vec_to_pytuple, InnerValue,
 };
 use crate::kore::{Id, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var};
 use pyo3::{
@@ -280,7 +279,7 @@ impl PySort {
 
     #[staticmethod]
     fn from_dict<'py>(dict: &Bound<'py, PyAny>) -> PyResult<Bound<'py, Self>> {
-        let value = pyobject_to_serde_value(dict)?;
+        let value: serde_json::Value = dict.extract::<InnerValue>()?.into();
         let sort: Sort =
             serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
@@ -290,8 +289,10 @@ impl PySort {
     fn dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let value = serde_json::to_value(self.wrapped.as_ref())
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        serde_value_to_pyobject(py, &value)
-            .and_then(|obj| Ok(obj.cast_bound::<PyDict>(py)?.clone().unbind()))
+        Ok(InnerValue(value)
+            .into_pyobject(py)?
+            .cast_into::<PyDict>()?
+            .into())
     }
 }
 
@@ -498,7 +499,7 @@ impl PyPattern {
 
     #[staticmethod]
     fn from_dict<'py>(dict: &Bound<'py, PyAny>) -> PyResult<Bound<'py, Self>> {
-        let value = pyobject_to_serde_value(dict)?;
+        let value: serde_json::Value = dict.extract::<InnerValue>()?.into();
         let pattern: Pattern =
             serde_json::from_value(value).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
@@ -508,8 +509,10 @@ impl PyPattern {
     fn dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let value = serde_json::to_value(self.wrapped.as_ref())
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        serde_value_to_pyobject(py, &value)
-            .and_then(|obj| Ok(obj.cast_bound::<PyDict>(py)?.clone().unbind()))
+        Ok(InnerValue(value)
+            .into_pyobject(py)?
+            .cast_into::<PyDict>()?
+            .into())
     }
 
     fn let_patterns(slf: Bound<'_, Self>, pats: Vec<Pattern>) -> PyResult<Py<Self>> {
