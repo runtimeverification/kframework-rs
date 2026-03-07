@@ -1908,7 +1908,12 @@ pub struct Exists {
 #[pymethods]
 impl Exists {
     #[new]
-    fn new_(py: Python<'_>, sort: Py<PySort>, var: Py<EVar>, pattern: Py<PyPattern>) -> PyResult<Py<PyPattern>> {
+    fn new_(
+        py: Python<'_>,
+        sort: Py<PySort>,
+        var: Py<EVar>,
+        pattern: Py<PyPattern>,
+    ) -> PyResult<Py<PyPattern>> {
         Self { sort, var, pattern }
             .into_pyobject(py)
             .map(Bound::unbind)
@@ -1989,7 +1994,12 @@ pub struct Forall {
 #[pymethods]
 impl Forall {
     #[new]
-    fn new_(py: Python<'_>, sort: Py<PySort>, var: Py<EVar>, pattern: Py<PyPattern>) -> PyResult<Py<PyPattern>> {
+    fn new_(
+        py: Python<'_>,
+        sort: Py<PySort>,
+        var: Py<EVar>,
+        pattern: Py<PyPattern>,
+    ) -> PyResult<Py<PyPattern>> {
         Self { sort, var, pattern }
             .into_pyobject(py)
             .map(Bound::unbind)
@@ -2062,14 +2072,55 @@ impl<'py> IntoPyObject<'py> for Forall {
 
 #[pyclass(extends = PyPattern, get_all)]
 pub struct Mu {
-    var: SVar,
-    pattern: Pattern,
+    var: Py<PySVar>,
+    pattern: Py<PyPattern>,
+}
+
+#[pymethods]
+impl Mu {
+    #[new]
+    fn new_(py: Python<'_>, var: Py<PySVar>, pattern: Py<PyPattern>) -> PyResult<Py<PyPattern>> {
+        Self { var, pattern }.into_pyobject(py).map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (var=None, pattern=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        var: Option<Py<PySVar>>,
+        pattern: Option<Py<PyPattern>>,
+    ) -> PyResult<Py<PyPattern>> {
+        let var = var.unwrap_or_else(|| self.var.clone_ref(py));
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone_ref(py));
+        Self::new_(py, var, pattern)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [pattern] = patterns.extract(slf.py())?;
+        slf.borrow().r#let(slf.py(), None, Some(pattern))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.pattern.clone_ref(py)])?.into())
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        let annotations = PyDict::new(py);
+        annotations.set_item("var", py.get_type::<PyPattern>())?;
+        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
+        Ok(annotations)
+    }
 }
 
 impl Wrappable<Pattern> for Mu {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Mu { var, op } = it {
-            Ok(Self { var, pattern: *op })
+            Ok(Self {
+                var: var.into_pyobject(py)?.into(),
+                pattern: op.into_pyobject(py)?.into(),
+            })
         } else {
             Self::error(it)
         }
@@ -2083,29 +2134,48 @@ impl<'py> IntoPyObject<'py> for Mu {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Mu {
-            var: self.var.clone(),
-            op: self.pattern.clone().into(),
+            var: self.var.extract(py)?,
+            op: self.pattern.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
     }
 }
 
+// --- Nu ---
+
+#[pyclass(extends = PyPattern, get_all)]
+pub struct Nu {
+    var: Py<PySVar>,
+    pattern: Py<PyPattern>,
+}
+
 #[pymethods]
-impl Mu {
+impl Nu {
     #[new]
-    fn new_(py: Python<'_>, var: SVar, pattern: Pattern) -> PyResult<Py<PyPattern>> {
+    fn new_(py: Python<'_>, var: Py<PySVar>, pattern: Py<PyPattern>) -> PyResult<Py<PyPattern>> {
         Self { var, pattern }.into_pyobject(py).map(Bound::unbind)
     }
 
+    #[pyo3(signature = (var=None, pattern=None))]
     fn r#let(
         &self,
         py: Python<'_>,
-        var: Option<SVar>,
-        pattern: Option<Pattern>,
+        var: Option<Py<PySVar>>,
+        pattern: Option<Py<PyPattern>>,
     ) -> PyResult<Py<PyPattern>> {
-        let var = var.unwrap_or_else(|| self.var.clone());
-        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
+        let var = var.unwrap_or_else(|| self.var.clone_ref(py));
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone_ref(py));
         Self::new_(py, var, pattern)
+    }
+
+    fn let_patterns(slf: Bound<'_, Self>, patterns: Py<PySequence>) -> PyResult<Py<PyPattern>> {
+        let [pattern] = patterns.extract(slf.py())?;
+        slf.borrow().r#let(slf.py(), None, Some(pattern))
+    }
+
+    #[getter]
+    fn patterns(&self, py: Python<'_>) -> PyResult<Py<PyTuple>> {
+        Ok(PyTuple::new(py, [self.pattern.clone_ref(py)])?.into())
     }
 
     #[classattr]
@@ -2117,18 +2187,13 @@ impl Mu {
     }
 }
 
-// --- Nu ---
-
-#[pyclass(extends = PyPattern, get_all)]
-pub struct Nu {
-    var: SVar,
-    pattern: Pattern,
-}
-
 impl Wrappable<Pattern> for Nu {
-    fn wrap_into(_py: Python<'_>, it: Pattern) -> PyResult<Self> {
+    fn wrap_into(py: Python<'_>, it: Pattern) -> PyResult<Self> {
         if let Pattern::Nu { var, op } = it {
-            Ok(Self { var, pattern: *op })
+            Ok(Self {
+                var: var.into_pyobject(py)?.into(),
+                pattern: op.into_pyobject(py)?.into(),
+            })
         } else {
             Self::error(it)
         }
@@ -2142,37 +2207,10 @@ impl<'py> IntoPyObject<'py> for Nu {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         let pat = Pattern::Nu {
-            var: self.var.clone(),
-            op: self.pattern.clone().into(),
+            var: self.var.extract(py)?,
+            op: self.pattern.extract::<Pattern>(py)?.into(),
         };
         convert_with_wrapped(py, pat, self)
-    }
-}
-
-#[pymethods]
-impl Nu {
-    #[new]
-    fn new_(py: Python<'_>, var: SVar, pattern: Pattern) -> PyResult<Py<PyPattern>> {
-        Self { var, pattern }.into_pyobject(py).map(Bound::unbind)
-    }
-
-    fn r#let(
-        &self,
-        py: Python<'_>,
-        var: Option<SVar>,
-        pattern: Option<Pattern>,
-    ) -> PyResult<Py<PyPattern>> {
-        let var = var.unwrap_or_else(|| self.var.clone());
-        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
-        Self::new_(py, var, pattern)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("var", py.get_type::<PyPattern>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
     }
 }
 
