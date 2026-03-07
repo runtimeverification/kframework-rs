@@ -13,11 +13,14 @@ from kframework_py.kore.syntax import Module, Definition
 
 sort_int, sort_kitem = [SortApp(s, ()) for s in ["SortInt", "SortKItem"]]
 one, two, three = [DV(sort_int, s) for s in ["1", "2", "3"]]
+v1, v2, v3 = [EVar(vstr, sort_kitem) for vstr in ["V1", "V2", "V3"]]
+sv1, sv2, sv3 = [SVar(svstr, sort_kitem) for svstr in ["@V1", "@V2", "@V3"]]
 
 def test_sortvar_let():
     sortvar = SortVar("SortA")
 
     new_sort = sortvar.let(name="SortB")
+
     assert new_sort == SortVar("SortB")
 
     with pytest.raises(TypeError):
@@ -27,6 +30,7 @@ def test_sortapp_let():
     sortapp = SortApp("SortApp", (sort_int, sort_kitem))
 
     new_sort = sortapp.let(sorts=(sort_kitem,))
+
     assert new_sort == SortApp("SortApp", (sort_kitem,))
 
     with pytest.raises(TypeError):
@@ -188,3 +192,124 @@ def test_next_let():
 
     with pytest.raises(TypeError):
         next_.let(sort="SortKItem")
+
+def test_implies_let():
+    implies = Implies(sort_kitem, one, two)
+
+    new_implies = implies.let(right=three)
+    new_implies2 = implies.let_patterns((two, three))
+
+    assert implies.patterns == (one, two)
+    assert new_implies.right == three
+    assert new_implies2 == Implies(sort_kitem, two, three)
+
+    with pytest.raises(TypeError):
+        implies.let(left=1)
+
+def test_iff_let():
+    iff = Iff(sort_kitem, one, two)
+
+    new_iff = iff.let(right=three)
+    new_iff2 = iff.let_patterns((two, three))
+
+    assert iff.patterns == (one, two)
+    assert new_iff.right == three
+    assert new_iff2 == Iff(sort_kitem, two, three)
+
+    with pytest.raises(TypeError):
+        iff.let(left=1)
+
+def test_rewrites_let():
+    rewrites = Rewrites(sort_kitem, one, two)
+
+    new_rewrites = rewrites.let(right=three)
+    new_rewrites2 = rewrites.let_patterns((two, three))
+
+    assert rewrites.patterns == (one, two)
+    assert new_rewrites.right == three
+    assert new_rewrites2 == Rewrites(sort_kitem, two, three)
+
+    with pytest.raises(TypeError):
+        rewrites.let(left=1)
+
+def test_and_let():
+    and_ = And(sort_kitem, (one, two, three))
+
+    new_and = and_.let(ops=(two, three))
+    new_and2 = and_.let_patterns((two, three))
+
+    assert and_.patterns == (one, two, three)
+    assert new_and.ops == (two, three)
+    assert new_and2 == And(sort_kitem, (two, three))
+
+    with pytest.raises(TypeError):
+        and_.let(ops=(1,2,3))
+
+def test_or_let():
+    or_ = Or(sort_kitem, (one, two, three))
+
+    new_or = or_.let(ops=(two, three))
+    new_or2 = or_.let_patterns((two, three))
+
+    assert or_.patterns == (one, two, three)
+    assert new_or.ops == (two, three)
+    assert new_or2 == Or(sort_kitem, (two, three))
+
+    with pytest.raises(TypeError):
+        or_.let(ops=(1,2,3))
+
+@pytest.mark.parametrize("cls", [Exists, Forall])
+def test_mlquant_let(cls):
+    quant = cls(sort_int, v1, one)
+
+    new_quant = quant.let(var=v2)
+    new_quant2 = quant.let_patterns((two,))
+
+    assert quant.patterns == (one,)
+    assert new_quant.var == v2
+    assert new_quant2 == cls(sort_int, v1, two)
+
+    with pytest.raises(TypeError):
+        quant.let(var="V4")
+
+@pytest.mark.parametrize("cls", [Mu, Nu])
+def test_mlfixpoint_let(cls):
+    fixpoint = cls(sv1, one)
+
+    new_fixpoint = fixpoint.let(pattern=two)
+    new_fixpoint2 = fixpoint.let_patterns((three,))
+
+    assert fixpoint.patterns == (one,)
+    assert new_fixpoint.var == sv1
+    assert new_fixpoint2.patterns == (three,)
+
+    with pytest.raises(TypeError):
+        fixpoint.let(var="@V4")
+
+@pytest.mark.parametrize("cls", [Ceil, Floor])
+def test_round_let(cls):
+    round_ = cls(sort_kitem, sort_int, one)
+
+    new_round = round_.let(pattern=two)
+    new_round2 = round_.let_patterns((three,))
+
+    assert round_.patterns == (one,)
+    assert new_round.op_sort == sort_kitem
+    assert new_round2.patterns == (three,)
+
+    with pytest.raises(TypeError):
+        round_.let(op_sort="SortK")
+
+@pytest.mark.parametrize("cls", [Equals, In])
+def test_binary_let(cls):
+    binary = cls(sort_int, sort_int, one, one)
+
+    new_binary = binary.let(right=two)
+    new_binary2 = binary.let_patterns((three, three))
+
+    assert binary.patterns == (one, one)
+    assert new_binary.sort == sort_int
+    assert new_binary2.patterns == (three, three)
+
+    with pytest.raises(TypeError):
+        binary.let(left=1)
