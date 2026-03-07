@@ -438,6 +438,16 @@ impl Wrappable<Sort> for PySort {
     }
 }
 
+macro_rules! annotations {
+    ( $py:ident, $( ($field:literal, $type:ident) ),* ) => {
+        [
+            $(
+                ($field, $py.get_type::<$type>()),
+            )*
+        ].into_py_dict($py)
+    }
+}
+
 #[pyclass(extends = PySort, get_all)]
 pub struct SortVar {
     name: Py<PyString>,
@@ -458,9 +468,7 @@ impl SortVar {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let var_annotations = PyDict::new(py);
-        var_annotations.set_item("name", py.get_type::<PyString>())?;
-        Ok(var_annotations)
+        annotations!(py, ("name", PyString))
     }
 }
 
@@ -525,10 +533,7 @@ impl SortApp {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let app_annotations = PyDict::new(py);
-        app_annotations.set_item("name", py.get_type::<PyString>())?;
-        app_annotations.set_item("sorts", py.get_type::<PyTuple>())?;
-        Ok(app_annotations)
+        annotations!(py, ("name", PyString), ("sorts", PyTuple))
     }
 }
 
@@ -692,10 +697,7 @@ impl EVar {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("name", py.get_type::<PyString>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        Ok(annotations)
+        annotations!(py, ("name", PyString), ("sort", PySort))
     }
 }
 
@@ -768,10 +770,7 @@ impl PySVar {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("name", py.get_type::<PyString>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        Ok(annotations)
+        annotations!(py, ("name", PyString), ("sort", PySort))
     }
 }
 
@@ -837,9 +836,7 @@ impl KoreString {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("value", py.get_type::<PyString>())?;
-        Ok(annotations)
+        annotations!(py, ("value", PyString))
     }
 }
 
@@ -922,11 +919,12 @@ impl App {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("symbol", py.get_type::<PyString>())?;
-        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
-        annotations.set_item("args", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("symbol", PyString),
+            ("sorts", PyTuple),
+            ("args", PyTuple)
+        )
     }
 }
 
@@ -1015,11 +1013,12 @@ impl LeftAssoc {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("symbol", py.get_type::<PyString>())?;
-        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
-        annotations.set_item("args", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("symbol", PyString),
+            ("sorts", PyTuple),
+            ("args", PyTuple)
+        )
     }
 }
 
@@ -1108,11 +1107,12 @@ impl RightAssoc {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("symbol", py.get_type::<PyString>())?;
-        annotations.set_item("sorts", py.get_type::<PyTuple>())?;
-        annotations.set_item("args", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("symbol", PyString),
+            ("sorts", PyTuple),
+            ("args", PyTuple)
+        )
     }
 }
 
@@ -1177,9 +1177,7 @@ impl Top {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort))
     }
 }
 
@@ -1237,9 +1235,7 @@ impl Bottom {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort))
     }
 }
 
@@ -1304,10 +1300,7 @@ impl DV {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("value", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort), ("value", PyPattern))
     }
 }
 
@@ -1377,10 +1370,7 @@ impl Not {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort), ("pattern", PyPattern))
     }
 }
 
@@ -1450,10 +1440,7 @@ impl Next {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort), ("pattern", PyPattern))
     }
 }
 
@@ -1533,11 +1520,12 @@ impl Implies {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("sort", PySort),
+            ("left", PyPattern),
+            ("right", PyPattern)
+        )
     }
 }
 
@@ -1619,11 +1607,12 @@ impl Iff {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("sort", PySort),
+            ("left", PyPattern),
+            ("right", PyPattern)
+        )
     }
 }
 
@@ -1705,11 +1694,12 @@ impl Rewrites {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("sort", PySort),
+            ("left", PyPattern),
+            ("right", PyPattern)
+        )
     }
 }
 
@@ -1785,10 +1775,7 @@ impl And {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("ops", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort), ("ops", PyTuple))
     }
 }
 
@@ -1862,10 +1849,7 @@ impl Or {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("ops", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(py, ("sort", PySort), ("ops", PyTuple))
     }
 }
 
@@ -1945,11 +1929,12 @@ impl Exists {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("var", py.get_type::<PyPattern>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("sort", PySort),
+            ("var", PyPattern),
+            ("pattern", PyPattern)
+        )
     }
 }
 
@@ -2031,11 +2016,12 @@ impl Forall {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("var", py.get_type::<PyPattern>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("sort", PySort),
+            ("var", PyPattern),
+            ("pattern", PyPattern)
+        )
     }
 }
 
@@ -2107,10 +2093,7 @@ impl Mu {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("var", py.get_type::<PyPattern>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(py, ("var", PyPattern), ("pattern", PyPattern))
     }
 }
 
@@ -2180,10 +2163,7 @@ impl Nu {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("var", py.get_type::<PyPattern>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(py, ("var", PyPattern), ("pattern", PyPattern))
     }
 }
 
@@ -2267,11 +2247,12 @@ impl Ceil {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("op_sort", py.get_type::<PySort>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("op_sort", PySort),
+            ("sort", PySort),
+            ("pattern", PyPattern)
+        )
     }
 }
 
@@ -2357,11 +2338,12 @@ impl Floor {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("op_sort", py.get_type::<PySort>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("op_sort", PySort),
+            ("sort", PySort),
+            ("pattern", PyPattern)
+        )
     }
 }
 
@@ -2453,12 +2435,13 @@ impl Equals {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("op_sort", py.get_type::<PySort>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("op_sort", PySort),
+            ("sort", PySort),
+            ("left", PyPattern),
+            ("right", PyPattern)
+        )
     }
 }
 
@@ -2558,12 +2541,13 @@ impl In {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("op_sort", py.get_type::<PySort>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("op_sort", PySort),
+            ("sort", PySort),
+            ("left", PyPattern),
+            ("right", PyPattern)
+        )
     }
 }
 
@@ -2641,10 +2625,7 @@ impl Symbol {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("name", py.get_type::<PyString>())?;
-        annotations.set_item("vars", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(py, ("name", PyString), ("vars", PyTuple))
     }
 }
 
@@ -2759,10 +2740,7 @@ impl Import {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("module_name", py.get_type::<PyString>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(py, ("module_name", PyString), ("attrs", PyTuple))
     }
 }
 
@@ -2849,12 +2827,13 @@ impl SortDecl {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("name", py.get_type::<PyString>())?;
-        annotations.set_item("vars", py.get_type::<PyTuple>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        annotations.set_item("hooked", py.get_type::<PyBool>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("name", PyString),
+            ("vars", PyTuple),
+            ("attrs", PyTuple),
+            ("hooked", PyBool)
+        )
     }
 }
 
@@ -2952,13 +2931,14 @@ impl SymbolDecl {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("symbol", py.get_type::<Symbol>())?;
-        annotations.set_item("param_sorts", py.get_type::<PyTuple>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        annotations.set_item("hooked", py.get_type::<PyBool>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("symbol", Symbol),
+            ("param_sorts", PyTuple),
+            ("sort", PySort),
+            ("attrs", PyTuple),
+            ("hooked", PyBool)
+        )
     }
 }
 
@@ -3063,14 +3043,15 @@ impl AliasDecl {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("alias", py.get_type::<Symbol>())?;
-        annotations.set_item("param_sorts", py.get_type::<PyTuple>())?;
-        annotations.set_item("sort", py.get_type::<PySort>())?;
-        annotations.set_item("left", py.get_type::<PyPattern>())?;
-        annotations.set_item("right", py.get_type::<PyPattern>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("alias", Symbol),
+            ("param_sorts", PyTuple),
+            ("sort", PySort),
+            ("left", PyPattern),
+            ("right", PyPattern),
+            ("attrs", PyTuple)
+        )
     }
 }
 
@@ -3170,11 +3151,12 @@ impl Axiom {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("vars", py.get_type::<PyTuple>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("vars", PyTuple),
+            ("pattern", PyPattern),
+            ("attrs", PyTuple)
+        )
     }
 }
 
@@ -3274,11 +3256,12 @@ impl Claim {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("vars", py.get_type::<PyTuple>())?;
-        annotations.set_item("pattern", py.get_type::<PyPattern>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("vars", PyTuple),
+            ("pattern", PyPattern),
+            ("attrs", PyTuple)
+        )
     }
 }
 
@@ -3371,11 +3354,12 @@ impl KoreModule {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("name", py.get_type::<PyString>())?;
-        annotations.set_item("sentences", py.get_type::<PyTuple>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(
+            py,
+            ("name", PyString),
+            ("sentences", PyTuple),
+            ("attrs", PyTuple)
+        )
     }
 }
 
@@ -3460,9 +3444,6 @@ impl KoreDefinition {
 
     #[classattr]
     fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let annotations = PyDict::new(py);
-        annotations.set_item("modules", py.get_type::<PyTuple>())?;
-        annotations.set_item("attrs", py.get_type::<PyTuple>())?;
-        Ok(annotations)
+        annotations!(py, ("modules", PyTuple), ("attrs", PyTuple))
     }
 }
