@@ -2567,7 +2567,30 @@ impl PySentence {
 #[pyclass(extends = PySentence, get_all)]
 pub struct Import {
     module_name: Py<PyString>,
-    attrs: Vec<crate::kore::App>,
+    attrs: Py<PyTuple>,
+}
+
+#[pymethods]
+impl Import {
+    #[new]
+    #[pyo3(signature = (module_name, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        module_name: Py<PyString>,
+        attrs: Option<Py<PyTuple>>,
+    ) -> PyResult<Py<PySentence>> {
+        Self {
+            module_name,
+            attrs: attrs.unwrap_or_else(|| PyTuple::empty(py).into()),
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        annotations!(py, ("module_name", PyString), ("attrs", PyTuple))
+    }
 }
 
 impl Wrappable<Sentence> for Import {
@@ -2575,7 +2598,7 @@ impl Wrappable<Sentence> for Import {
         if let Sentence::Import { module, attrs } = it {
             Ok(Self {
                 module_name: module.into_pyobject(py)?.into(),
-                attrs,
+                attrs: vec_to_pytuple(py, attrs)?,
             })
         } else {
             Self::error(it)
@@ -2589,35 +2612,11 @@ impl<'py> IntoPyObject<'py> for Import {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let module = self.module_name.extract(py)?;
         let sen = Sentence::Import {
-            module,
-            attrs: self.attrs.to_vec(),
+            module: self.module_name.extract(py)?,
+            attrs: self.attrs.extract(py)?,
         };
         convert_with_wrapped(py, sen, self)
-    }
-}
-
-#[pymethods]
-impl Import {
-    #[new]
-    #[pyo3(signature = (module_name, attrs=None))]
-    fn new_(
-        py: Python<'_>,
-        module_name: Py<PyString>,
-        attrs: Option<Vec<crate::kore::App>>,
-    ) -> PyResult<Py<PySentence>> {
-        Self {
-            module_name,
-            attrs: attrs.unwrap_or_default(),
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        annotations!(py, ("module_name", PyString), ("attrs", PyTuple))
     }
 }
 
