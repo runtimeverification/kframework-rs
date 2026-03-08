@@ -65,3 +65,10 @@ def test_axiom():
 
     with pytest.raises(TypeError):
         Axiom((sortvar_int,), sort_int)
+
+def test_claim():
+    claim = Claim((sortvar_int,), app1)
+    claim = Claim(("SortInt",), app1)
+
+    with pytest.raises(TypeError):
+        Claim((sortvar_int,), sort_int)
