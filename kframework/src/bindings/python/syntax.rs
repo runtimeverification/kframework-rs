@@ -2625,9 +2625,42 @@ impl<'py> IntoPyObject<'py> for Import {
 #[pyclass(extends = PySentence, get_all)]
 pub struct SortDecl {
     name: Py<PyString>,
-    vars: Vec<Py<SortVar>>,
-    attrs: Vec<crate::kore::App>,
+    vars: Py<PyTuple>,
+    attrs: Py<PyTuple>,
     hooked: bool,
+}
+
+#[pymethods]
+impl SortDecl {
+    #[new]
+    #[pyo3(signature = (name, vars, attrs=None, *, hooked=false))]
+    fn new_(
+        py: Python<'_>,
+        name: Py<PyString>,
+        vars: Py<PyTuple>,
+        attrs: Option<Py<PyTuple>>,
+        hooked: bool,
+    ) -> PyResult<Py<PySentence>> {
+        Self {
+            name,
+            vars,
+            attrs: attrs.unwrap_or_else(|| PyTuple::empty(py).into()),
+            hooked,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        annotations!(
+            py,
+            ("name", PyString),
+            ("vars", PyTuple),
+            ("attrs", PyTuple),
+            ("hooked", PyBool)
+        )
+    }
 }
 
 impl<'py> IntoPyObject<'py> for SortDecl {
@@ -2636,16 +2669,10 @@ impl<'py> IntoPyObject<'py> for SortDecl {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let id = self.name.extract(py)?;
-        let vars: Vec<Id> = self
-            .vars
-            .iter()
-            .map(|var| var.extract(py))
-            .collect::<Result<_, _>>()?;
         let sen = Sentence::Sort {
-            id,
-            vars,
-            attrs: self.attrs.to_vec(),
+            id: self.name.extract(py)?,
+            vars: self.vars.extract(py)?,
+            attrs: self.attrs.extract(py)?,
             hooked: self.hooked,
         };
         convert_with_wrapped(py, sen, self)
@@ -2667,49 +2694,13 @@ impl Wrappable<Sentence> for SortDecl {
                 .collect::<Result<_, PyErr>>()?;
             Ok(Self {
                 name: id.into_pyobject(py)?.into(),
-                vars,
-                attrs: attrs.to_vec(),
+                vars: vec_to_pytuple(py, vars)?,
+                attrs: vec_to_pytuple(py, attrs)?,
                 hooked,
             })
         } else {
             Self::error(it)
         }
-    }
-}
-
-#[pymethods]
-impl SortDecl {
-    #[new]
-    #[pyo3(signature = (name, vars, attrs=None, *, hooked=false))]
-    fn new_(
-        py: Python<'_>,
-        name: Py<PyString>,
-        vars: Vec<Id>,
-        attrs: Option<Vec<crate::kore::App>>,
-        hooked: bool,
-    ) -> PyResult<Py<PySentence>> {
-        Self {
-            name,
-            vars: vars
-                .into_iter()
-                .map(|id| id.into_pysortvar(py))
-                .collect::<Result<_, _>>()?,
-            attrs: attrs.unwrap_or_default(),
-            hooked,
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        annotations!(
-            py,
-            ("name", PyString),
-            ("vars", PyTuple),
-            ("attrs", PyTuple),
-            ("hooked", PyBool)
-        )
     }
 }
 

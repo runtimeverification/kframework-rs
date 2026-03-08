@@ -35,3 +35,13 @@ def test_import():
 
     with pytest.raises(ValueError):
         Import("@Setvar", (app1,))
+
+def test_sortdecl():
+    sortdecl = SortDecl("Sort", (sortvar_int, sortvar_int))
+    sortdecl2 = SortDecl("Sort", ("Var1", "Var2"))
+
+    with pytest.raises(TypeError):
+        SortDecl("Sort", (sv1, sv2))
+
+    with pytest.raises(ValueError):
+        SortDecl("@SVar", ())
