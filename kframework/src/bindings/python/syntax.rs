@@ -2709,10 +2709,46 @@ impl Wrappable<Sentence> for SortDecl {
 #[pyclass(extends = PySentence, get_all)]
 pub struct SymbolDecl {
     symbol: Py<Symbol>,
-    param_sorts: Vec<Sort>,
-    sort: Sort,
-    attrs: Vec<crate::kore::App>,
+    param_sorts: Py<PyTuple>,
+    sort: Py<PySort>,
+    attrs: Py<PyTuple>,
     hooked: bool,
+}
+
+#[pymethods]
+impl SymbolDecl {
+    #[new]
+    #[pyo3(signature = (symbol, param_sorts, sort, attrs=None, *, hooked=false))]
+    fn new_(
+        py: Python<'_>,
+        symbol: Py<Symbol>,
+        param_sorts: Py<PyTuple>,
+        sort: Py<PySort>,
+        attrs: Option<Py<PyTuple>>,
+        hooked: bool,
+    ) -> PyResult<Py<PySentence>> {
+        Self {
+            symbol,
+            param_sorts,
+            sort,
+            attrs: attrs.unwrap_or_else(|| PyTuple::empty(py).into()),
+            hooked,
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        annotations!(
+            py,
+            ("symbol", Symbol),
+            ("param_sorts", PyTuple),
+            ("sort", PySort),
+            ("attrs", PyTuple),
+            ("hooked", PyBool)
+        )
+    }
 }
 
 impl Wrappable<Sentence> for SymbolDecl {
@@ -2726,19 +2762,13 @@ impl Wrappable<Sentence> for SymbolDecl {
             hooked,
         } = it
         {
-            let vars: Vec<Py<SortVar>> = vars
-                .into_iter()
-                .map(|id| id.into_pysortvar(py))
-                .collect::<Result<_, PyErr>>()?;
-            let symbol = Symbol {
-                name: id.into_pyobject(py)?.into(),
-                vars,
-            };
+            let vars = PyTuple::new(py, vars.into_iter().map(Sort::Var))?.into();
+            let symbol = Symbol::new_(py, id.into_pyobject(py)?.into(), Some(vars))?;
             Ok(Self {
-                symbol: Py::new(py, symbol)?,
-                param_sorts,
-                sort,
-                attrs,
+                symbol,
+                param_sorts: PyTuple::new(py, param_sorts)?.into(),
+                sort: sort.into_pyobject(py)?.into(),
+                attrs: PyTuple::new(py, attrs)?.into(),
                 hooked,
             })
         } else {
@@ -2760,52 +2790,16 @@ impl<'py> IntoPyObject<'py> for SymbolDecl {
             attrs,
             hooked,
         } = &self;
-        let (id, vars) = symbol.bind(py).borrow().as_rust_fields(py)?;
+        let symbol = symbol.bind(py).borrow();
         let sen = Sentence::Symbol {
-            id,
-            vars,
-            param_sorts: param_sorts.to_vec(),
-            sort: sort.clone(),
-            attrs: attrs.to_vec(),
+            id: symbol.name.extract(py)?,
+            vars: symbol.vars.extract(py)?,
+            param_sorts: param_sorts.extract(py)?,
+            sort: sort.extract(py)?,
+            attrs: attrs.extract(py)?,
             hooked: *hooked,
         };
         convert_with_wrapped(py, sen, self)
-    }
-}
-
-#[pymethods]
-impl SymbolDecl {
-    #[new]
-    #[pyo3(signature = (symbol, param_sorts, sort, attrs=None, *, hooked=false))]
-    fn new_(
-        py: Python<'_>,
-        symbol: Py<Symbol>,
-        param_sorts: Vec<Sort>,
-        sort: Sort,
-        attrs: Option<Vec<crate::kore::App>>,
-        hooked: bool,
-    ) -> PyResult<Py<PySentence>> {
-        Self {
-            symbol,
-            param_sorts,
-            sort,
-            attrs: attrs.unwrap_or_default(),
-            hooked,
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        annotations!(
-            py,
-            ("symbol", Symbol),
-            ("param_sorts", PyTuple),
-            ("sort", PySort),
-            ("attrs", PyTuple),
-            ("hooked", PyBool)
-        )
     }
 }
 

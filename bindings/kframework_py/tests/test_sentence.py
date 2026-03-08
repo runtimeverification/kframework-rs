@@ -45,3 +45,10 @@ def test_sortdecl():
 
     with pytest.raises(ValueError):
         SortDecl("@SVar", ())
+
+def test_symboldecl():
+    sym = Symbol("\\dv", (sortvar_int,))
+    symboldecl = SymbolDecl(sym, (sortvar_int, sortvar_int), sort_kitem)
+
+    with pytest.raises(TypeError):
+        SymbolDecl(sym, ("Var1", "Var2"), sort_kitem)
