@@ -2468,7 +2468,7 @@ impl<'py> IntoPyObject<'py> for In {
 #[pyclass(get_all)]
 pub struct Symbol {
     name: Py<PyString>,
-    vars: Vec<Py<SortVar>>,
+    vars: Py<PyTuple>,
 }
 
 impl<'py> Symbol {
@@ -2476,9 +2476,10 @@ impl<'py> Symbol {
         let id: SymbolId = self.name.extract(py)?;
         let vars: Vec<Id> = self
             .vars
+            .bind(py)
             .iter()
-            .map(|var| var.extract(py))
-            .collect::<Result<_, _>>()?;
+            .map(|var| var.extract())
+            .collect::<Result<Vec<_>, _>>()?;
         Ok((id, vars))
     }
 }
@@ -2487,11 +2488,16 @@ impl<'py> Symbol {
 impl Symbol {
     #[new]
     #[pyo3(signature = (name, vars=None))]
-    fn new_(name: Py<PyString>, vars: Option<Vec<Py<SortVar>>>) -> PyResult<Self> {
+    fn new_(py: Python<'_>, name: Py<PyString>, vars: Option<Py<PyTuple>>) -> PyResult<Py<Self>> {
+        let vars = vars.unwrap_or_else(|| PyTuple::empty(py).into());
+        let _name_checked: SymbolId = name.extract(py)?;
+        let _vars_checked = vars.bind(py).iter().map(|var| var.cast_into::<SortVar>()).collect::<Result<Vec<_>,_>>()?;
         Ok(Symbol {
             name,
-            vars: vars.unwrap_or_default(),
-        })
+            vars,
+        }
+        .into_pyobject(py)?
+        .into())
     }
 
     #[classattr]
