@@ -58,3 +58,10 @@ def test_aliasdecl():
 
     with pytest.raises(TypeError):
         AliasDecl(sym, ("Sort",), sort_kitem, app1, app1)
+
+def test_axiom():
+    axiom = Axiom((sortvar_int,), app1)
+    axiom = Axiom(("SortInt",), app1)
+
+    with pytest.raises(TypeError):
+        Axiom((sortvar_int,), sort_int)

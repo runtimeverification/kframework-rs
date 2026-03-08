@@ -2914,9 +2914,53 @@ impl<'py> IntoPyObject<'py> for AliasDecl {
 
 #[pyclass(extends = PySentence, get_all)]
 pub struct Axiom {
-    vars: Vec<Py<SortVar>>,
-    pattern: Pattern,
-    attrs: Vec<crate::kore::App>,
+    vars: Py<PyTuple>,
+    pattern: Py<PyPattern>,
+    attrs: Py<PyTuple>,
+}
+
+#[pymethods]
+impl Axiom {
+    #[new]
+    #[pyo3(signature = (vars, pattern, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        vars: Py<PyTuple>,
+        pattern: Py<PyPattern>,
+        attrs: Option<Py<PyTuple>>,
+    ) -> PyResult<Py<PySentence>> {
+        Self {
+            vars,
+            pattern,
+            attrs: attrs.unwrap_or_else(|| PyTuple::empty(py).into()),
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[pyo3(signature = (vars=None, pattern=None, attrs=None))]
+    fn r#let(
+        &self,
+        py: Python<'_>,
+        vars: Option<Py<PyTuple>>,
+        pattern: Option<Py<PyPattern>>,
+        attrs: Option<Py<PyTuple>>,
+    ) -> PyResult<Py<PySentence>> {
+        let vars = vars.unwrap_or_else(|| PyTuple::empty(py).into());
+        let pattern = pattern.unwrap_or_else(|| self.pattern.clone_ref(py));
+        let attrs = attrs.unwrap_or_else(|| PyTuple::empty(py).into());
+        Self::new_(py, vars, pattern, Some(attrs))
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        annotations!(
+            py,
+            ("vars", PyTuple),
+            ("pattern", PyPattern),
+            ("attrs", PyTuple)
+        )
+    }
 }
 
 impl Wrappable<Sentence> for Axiom {
@@ -2927,14 +2971,10 @@ impl Wrappable<Sentence> for Axiom {
             attrs,
         } = it
         {
-            let vars: Vec<Py<SortVar>> = vars
-                .into_iter()
-                .map(|id| id.into_pysortvar(py))
-                .collect::<Result<_, PyErr>>()?;
             Ok(Self {
-                vars,
-                pattern: *pattern,
-                attrs,
+                vars: vec_to_pytuple(py, vars)?,
+                pattern: pattern.into_pyobject(py)?.into(),
+                attrs: vec_to_pytuple(py, attrs)?,
             })
         } else {
             Self::error(it)
@@ -2948,70 +2988,12 @@ impl<'py> IntoPyObject<'py> for Axiom {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        let vars: Vec<Id> = self
-            .vars
-            .iter()
-            .map(|var| var.extract(py))
-            .collect::<Result<_, _>>()?;
         let sen = Sentence::Axiom {
-            vars,
-            pattern: self.pattern.clone().into(),
-            attrs: self.attrs.to_vec(),
+            vars: self.vars.extract(py)?,
+            pattern: self.pattern.extract::<Pattern>(py)?.into(),
+            attrs: self.attrs.extract(py)?,
         };
         convert_with_wrapped(py, sen, self)
-    }
-}
-
-#[pymethods]
-impl Axiom {
-    #[new]
-    #[pyo3(signature = (vars, pattern, attrs=None))]
-    fn new_(
-        py: Python<'_>,
-        vars: Vec<Id>,
-        pattern: Pattern,
-        attrs: Option<Vec<crate::kore::App>>,
-    ) -> PyResult<Py<PySentence>> {
-        Self {
-            vars: vars
-                .into_iter()
-                .map(|id| id.into_pysortvar(py))
-                .collect::<Result<_, _>>()?,
-            pattern,
-            attrs: attrs.unwrap_or_default(),
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    fn r#let(
-        &self,
-        py: Python<'_>,
-        vars: Option<Vec<Id>>,
-        pattern: Option<Pattern>,
-        attrs: Option<Vec<crate::kore::App>>,
-    ) -> PyResult<Py<PySentence>> {
-        let vars = if let Some(vars) = vars {
-            vars
-        } else {
-            self.vars
-                .iter()
-                .map(|v| v.extract(py))
-                .collect::<Result<_, _>>()?
-        };
-        let pattern = pattern.unwrap_or_else(|| self.pattern.clone());
-        let attrs = attrs.or_else(|| Some(self.attrs.clone()));
-        Self::new_(py, vars, pattern, attrs)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        annotations!(
-            py,
-            ("vars", PyTuple),
-            ("pattern", PyPattern),
-            ("attrs", PyTuple)
-        )
     }
 }
 
