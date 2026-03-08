@@ -2808,11 +2808,50 @@ impl<'py> IntoPyObject<'py> for SymbolDecl {
 #[pyclass(extends = PySentence, get_all)]
 pub struct AliasDecl {
     alias: Py<Symbol>,
-    param_sorts: Vec<Sort>,
-    sort: Sort,
-    left: crate::kore::App,
-    right: Pattern,
-    attrs: Vec<crate::kore::App>,
+    param_sorts: Py<PyTuple>,
+    sort: Py<PySort>,
+    left: Py<App>,
+    right: Py<PyPattern>,
+    attrs: Py<PyTuple>,
+}
+
+#[pymethods]
+impl AliasDecl {
+    #[new]
+    #[pyo3(signature = (alias, param_sorts, sort, left, right, attrs=None))]
+    fn new_(
+        py: Python<'_>,
+        alias: Py<Symbol>,
+        param_sorts: Py<PyTuple>,
+        sort: Py<PySort>,
+        left: Py<App>,
+        right: Py<PyPattern>,
+        attrs: Option<Py<PyTuple>>,
+    ) -> PyResult<Py<PySentence>> {
+        Self {
+            alias,
+            param_sorts,
+            sort,
+            left,
+            right,
+            attrs: attrs.unwrap_or_else(|| PyTuple::empty(py).into()),
+        }
+        .into_pyobject(py)
+        .map(Bound::unbind)
+    }
+
+    #[classattr]
+    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+        annotations!(
+            py,
+            ("alias", Symbol),
+            ("param_sorts", PyTuple),
+            ("sort", PySort),
+            ("left", App),
+            ("right", PyPattern),
+            ("attrs", PyTuple)
+        )
+    }
 }
 
 impl Wrappable<Sentence> for AliasDecl {
@@ -2827,21 +2866,15 @@ impl Wrappable<Sentence> for AliasDecl {
             attrs,
         } = it
         {
-            let vars: Vec<Py<SortVar>> = vars
-                .into_iter()
-                .map(|id| id.into_pysortvar(py))
-                .collect::<Result<_, PyErr>>()?;
-            let symbol = Symbol {
-                name: id.into_pyobject(py)?.into(),
-                vars,
-            };
+            let vars = PyTuple::new(py, vars.into_iter().map(Sort::Var))?.into();
+            let symbol = Symbol::new_(py, id.into_pyobject(py)?.into(), Some(vars))?;
             Ok(Self {
-                alias: Py::new(py, symbol)?,
-                param_sorts,
-                sort,
-                left,
-                right: *right,
-                attrs,
+                alias: symbol,
+                param_sorts: vec_to_pytuple(py, param_sorts)?,
+                sort: sort.into_pyobject(py)?.into(),
+                left: left.into_pyobject(py)?.into(),
+                right: right.into_pyobject(py)?.into(),
+                attrs: vec_to_pytuple(py, attrs)?,
             })
         } else {
             Self::error(it)
@@ -2863,56 +2896,17 @@ impl<'py> IntoPyObject<'py> for AliasDecl {
             right,
             attrs,
         } = &self;
-        let (id, vars) = alias.bind(py).borrow().as_rust_fields(py)?;
+        let symbol = alias.bind(py).borrow();
         let sen = Sentence::Alias {
-            id,
-            vars,
-            param_sorts: param_sorts.to_vec(),
-            sort: sort.clone(),
-            left: left.clone(),
-            right: right.clone().into(),
-            attrs: attrs.to_vec(),
+            id: symbol.name.extract(py)?,
+            vars: symbol.vars.extract(py)?,
+            param_sorts: param_sorts.extract(py)?,
+            sort: sort.extract(py)?,
+            left: left.extract(py)?,
+            right: right.extract::<Pattern>(py)?.into(),
+            attrs: attrs.extract(py)?,
         };
         convert_with_wrapped(py, sen, self)
-    }
-}
-
-#[pymethods]
-impl AliasDecl {
-    #[new]
-    #[pyo3(signature = (alias, param_sorts, sort, left, right, attrs=None))]
-    fn new_(
-        py: Python<'_>,
-        alias: Py<Symbol>,
-        param_sorts: Vec<Sort>,
-        sort: Sort,
-        left: crate::kore::App,
-        right: Pattern,
-        attrs: Option<Vec<crate::kore::App>>,
-    ) -> PyResult<Py<PySentence>> {
-        Self {
-            alias,
-            param_sorts,
-            sort,
-            left,
-            right,
-            attrs: attrs.unwrap_or_default(),
-        }
-        .into_pyobject(py)
-        .map(Bound::unbind)
-    }
-
-    #[classattr]
-    fn __annotations__(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        annotations!(
-            py,
-            ("alias", Symbol),
-            ("param_sorts", PyTuple),
-            ("sort", PySort),
-            ("left", PyPattern),
-            ("right", PyPattern),
-            ("attrs", PyTuple)
-        )
     }
 }
 
