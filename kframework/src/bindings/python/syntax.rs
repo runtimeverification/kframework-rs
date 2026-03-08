@@ -2471,19 +2471,6 @@ pub struct Symbol {
     vars: Py<PyTuple>,
 }
 
-impl<'py> Symbol {
-    fn as_rust_fields(&self, py: Python<'py>) -> PyResult<(SymbolId, Vec<Id>)> {
-        let id: SymbolId = self.name.extract(py)?;
-        let vars: Vec<Id> = self
-            .vars
-            .bind(py)
-            .iter()
-            .map(|var| var.extract())
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok((id, vars))
-    }
-}
-
 #[pymethods]
 impl Symbol {
     #[new]
@@ -2491,13 +2478,12 @@ impl Symbol {
     fn new_(py: Python<'_>, name: Py<PyString>, vars: Option<Py<PyTuple>>) -> PyResult<Py<Self>> {
         let vars = vars.unwrap_or_else(|| PyTuple::empty(py).into());
         let _name_checked: SymbolId = name.extract(py)?;
-        let _vars_checked = vars.bind(py).iter().map(|var| var.cast_into::<SortVar>()).collect::<Result<Vec<_>,_>>()?;
-        Ok(Symbol {
-            name,
-            vars,
-        }
-        .into_pyobject(py)?
-        .into())
+        let _vars_checked = vars
+            .bind(py)
+            .iter()
+            .map(|var| var.cast_into::<SortVar>())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Symbol { name, vars }.into_pyobject(py)?.into())
     }
 
     #[classattr]
