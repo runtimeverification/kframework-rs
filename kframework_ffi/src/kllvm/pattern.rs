@@ -1,3 +1,4 @@
+use libc;
 use super::ffi;
 use super::Block;
 use std::ffi::{c_void, CStr, CString};
@@ -40,7 +41,7 @@ impl fmt::Display for Pattern {
                 .to_str()
                 .expect("Failed to convert kllvm::Pattern to &str")
                 .to_string();
-            ffi::free(c_str as *const c_void);
+            libc::free(c_str as *mut c_void);
             result
         };
         write!(f, "{}", result)

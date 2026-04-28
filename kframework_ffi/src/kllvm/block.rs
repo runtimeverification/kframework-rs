@@ -4,7 +4,7 @@ use super::Pattern;
 /// A safe wrapper around a foreign pointer to kllvm's interned representation.
 /// kllvm's garbage collector manages the allocation/freeing of this pointer.
 pub struct Block {
-    pub(crate) block: *const ffi::block,
+    pub(crate) block: *mut ffi::block,
 }
 
 impl Block {
