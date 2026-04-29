@@ -222,6 +222,7 @@ name = "kframework_ffi"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+ "kframework",
  "libc",
 ]
 

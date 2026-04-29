@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+kframework = { path = "../kframework" }
 libc = "0.2"
 
 [build-dependencies]

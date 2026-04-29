@@ -1,7 +1,7 @@
 use libc;
 use super::ffi;
-use super::Block;
-use std::ffi::{c_void, CStr, CString};
+use super::{Block, Sort, Symbol};
+use std::ffi::{c_void, CStr, CString, NulError};
 use std::fmt;
 use std::str::FromStr;
 
@@ -20,6 +20,29 @@ impl Pattern {
 
     pub fn from_raw(p: *mut ffi::kore_pattern) -> Self {
         Self { pattern: p }
+    }
+
+    /// Build a fresh composite pattern from a symbol. The symbol is borrowed;
+    /// the C++ side keeps a `shared_ptr` to its underlying AST.
+    pub fn from_symbol(sym: &Symbol) -> Self {
+        let raw = unsafe { ffi::kore_composite_pattern_from_symbol(sym.symbol) };
+        Self { pattern: raw }
+    }
+
+    /// Build a fresh token (Dv) pattern of the given sort.
+    pub fn new_token(value: &str, sort: &Sort) -> Result<Self, NulError> {
+        let c_val = CString::new(value)?;
+        let raw = unsafe { ffi::kore_pattern_new_token(c_val.as_ptr(), sort.sort) };
+        Ok(Self { pattern: raw })
+    }
+
+    /// Append `child` as an argument to this composite pattern. The child
+    /// is borrowed; the C++ side takes a `shared_ptr` copy of its AST, so
+    /// the caller may continue to use or drop `child` afterwards.
+    pub fn add_argument(&mut self, child: &Pattern) {
+        unsafe {
+            ffi::kore_composite_pattern_add_argument(self.pattern as *mut _, child.pattern)
+        };
     }
 }
 

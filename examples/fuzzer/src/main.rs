@@ -4,10 +4,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use honggfuzz::fuzz;
 use kframework::kore::{App, Id, Parser, Pattern, Sort, SymbolId};
 use kframework_ffi::kllvm;
-
-mod marshal;
-#[allow(unused_imports)]
-use marshal::{MarshalError, Marshaller, VarHandler};
+use kframework_ffi::kllvm::{MarshalError, Marshaller, VarHandler};
 
 #[derive(Clone, Copy)]
 struct FuzzInput {

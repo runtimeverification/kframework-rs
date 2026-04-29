@@ -27,7 +27,10 @@
 //! ```
 mod block;
 pub mod ffi;
+mod marshal;
 mod pattern;
+mod sort;
+mod symbol;
 
 pub fn init() {
     unsafe {
@@ -41,4 +44,7 @@ pub fn free_all_memory() {
 }
 
 pub use self::block::Block;
+pub use self::marshal::{MarshalError, Marshaller, VarHandler};
 pub use self::pattern::Pattern;
+pub use self::sort::Sort;
+pub use self::symbol::Symbol;
