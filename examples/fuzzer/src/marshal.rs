@@ -41,11 +41,11 @@ impl Drop for OwnedSort {
 pub struct Marshaller<H: VarHandler> {
     symbols: HashMap<String, OwnedSymbol>,
     subtrees: HashMap<*const Pattern, OwnedPattern>,
-    handler: H,
+    handler: Option<H>,
 }
 
 impl<H: VarHandler> Marshaller<H> {
-    pub fn new(handler: H) -> Self {
+    pub fn new(handler: Option<H>) -> Self {
         Self {
             symbols: HashMap::new(),
             subtrees: HashMap::new(),
@@ -54,7 +54,7 @@ impl<H: VarHandler> Marshaller<H> {
     }
 
     pub fn marshal(&mut self, root: &Pattern) -> Result<kllvm::Pattern, MarshalError> {
-        let (raw, _var_free) = self.marshal_node(root)?;
+        let (raw, _var_free) = self.marshal_node(root, false)?;
         // If the root happened to be fully var-free it now lives in the
         // cache; pop it so kllvm::Pattern's Drop owns the only reference
         // and we don't double-free.
@@ -62,18 +62,27 @@ impl<H: VarHandler> Marshaller<H> {
         Ok(kllvm::Pattern::from_raw(raw))
     }
 
+    pub fn set_handler(&mut self, h: H) {
+        self.handler = Some(h);
+    }
+
     fn marshal_node(
         &mut self,
         p: &Pattern,
+        was_var: bool,
     ) -> Result<(*mut ffi::kore_pattern, bool), MarshalError> {
         if let Some(owned) = self.subtrees.get(&(p as *const Pattern)) {
             return Ok((owned.0, true));
         }
 
-        match p {
+        let res = match p {
             Pattern::Var(v) => {
-                let sub = self.handler.substitute(v.id.as_str())?;
-                let (ptr, _) = self.marshal_node(&sub)?;
+                let handler = self
+                    .handler
+                    .as_mut()
+                    .ok_or_else(|| MarshalError::UnknownVar(v.id.as_str().into()))?;
+                let sub = handler.substitute(v.id.as_str())?;
+                let (ptr, _) = self.marshal_node(&sub, true)?;
                 Ok((ptr, false))
             }
 
@@ -81,14 +90,20 @@ impl<H: VarHandler> Marshaller<H> {
                 let sort_owned = build_sort(sort)?;
                 let c_val = CString::new(value.0.as_str()).map_err(|_| MarshalError::Cstring)?;
                 let ptr = unsafe { ffi::kore_pattern_new_token(c_val.as_ptr(), sort_owned.0) };
-                self.subtrees.insert(p as *const Pattern, OwnedPattern(ptr));
                 Ok((ptr, true))
             }
 
             Pattern::App(app) => self.marshal_app(p, app),
 
             other => Err(MarshalError::Unsupported(variant_name(other))),
-        }
+        };
+
+        res.inspect(|(ptr, var_free)| {
+            if !was_var && *var_free {
+                self.subtrees
+                    .insert(p as *const Pattern, OwnedPattern(*ptr));
+            }
+        })
     }
 
     fn marshal_app(
@@ -101,7 +116,7 @@ impl<H: VarHandler> Marshaller<H> {
 
         let mut var_free = true;
         for arg in &app.args {
-            let (child, child_vf) = self.marshal_node(arg)?;
+            let (child, child_vf) = self.marshal_node(arg, false)?;
             unsafe { ffi::kore_composite_pattern_add_argument(pat, child) };
             var_free &= child_vf;
             // Do NOT free `child`. If borrowed (cache hit), the cache owns
@@ -112,10 +127,6 @@ impl<H: VarHandler> Marshaller<H> {
             // (~16 bytes/node, bounded by tree size, not iteration count).
         }
 
-        if var_free {
-            self.subtrees
-                .insert(p as *const Pattern, OwnedPattern(pat));
-        }
         Ok((pat, var_free))
     }
 
@@ -183,4 +194,3 @@ fn variant_name(p: &Pattern) -> &'static str {
         Pattern::Rewrites { .. } => "Rewrites",
     }
 }
-
