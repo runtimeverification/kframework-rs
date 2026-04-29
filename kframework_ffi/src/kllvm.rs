@@ -26,7 +26,7 @@
 //! kllvm::free_all_memory();
 //! ```
 mod block;
-mod ffi;
+pub mod ffi;
 mod pattern;
 
 pub fn init() {

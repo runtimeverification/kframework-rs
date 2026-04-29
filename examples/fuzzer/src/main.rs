@@ -5,6 +5,10 @@ use honggfuzz::fuzz;
 use kframework::kore::{App, Parser, Pattern, SymbolId};
 use kframework_ffi::kllvm;
 
+mod marshal;
+#[allow(unused_imports)]
+use marshal::{MarshalError, Marshaller, VarHandler};
+
 #[derive(Clone, Copy)]
 struct FuzzInput {
     field1: u32,

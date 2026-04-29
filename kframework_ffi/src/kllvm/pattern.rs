@@ -17,6 +17,10 @@ impl Pattern {
     pub fn new(s: &str) -> Result<Pattern, <Pattern as FromStr>::Err> {
         Pattern::from_str(s)
     }
+
+    pub fn from_raw(p: *mut ffi::kore_pattern) -> Self {
+        Self { pattern: p }
+    }
 }
 
 impl FromStr for Pattern {
