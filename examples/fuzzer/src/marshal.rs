@@ -54,11 +54,16 @@ impl<H: VarHandler> Marshaller<H> {
     }
 
     pub fn marshal(&mut self, root: &Pattern) -> Result<kllvm::Pattern, MarshalError> {
-        let (raw, _var_free) = self.marshal_node(root, false)?;
+        let (raw, _var_free, fresh) = self.marshal_node(root, false)?;
         // If the root happened to be fully var-free it now lives in the
-        // cache; pop it so kllvm::Pattern's Drop owns the only reference
-        // and we don't double-free.
-        self.subtrees.remove(&(root as *const Pattern));
+        // cache; transfer ownership out so kllvm::Pattern's Drop is the
+        // sole freer. mem::forget the OwnedPattern we popped — the cache
+        // no longer owns it; kllvm::Pattern does.
+        if !fresh {
+            if let Some(owned) = self.subtrees.remove(&(root as *const Pattern)) {
+                std::mem::forget(owned);
+            }
+        }
         Ok(kllvm::Pattern::from_raw(raw))
     }
 
@@ -66,13 +71,18 @@ impl<H: VarHandler> Marshaller<H> {
         self.handler = Some(h);
     }
 
+    /// Returns `(ptr, var_free, fresh)`.
+    /// - `fresh = true`  => caller owns the C wrapper and must free it
+    ///   (typically right after handing it to `add_argument`, since the
+    ///   parent already took a `shared_ptr` copy of the underlying AST).
+    /// - `fresh = false` => `ptr` is borrowed (lives in `self.subtrees`).
     fn marshal_node(
         &mut self,
         p: &Pattern,
         was_var: bool,
-    ) -> Result<(*mut ffi::kore_pattern, bool), MarshalError> {
+    ) -> Result<(*mut ffi::kore_pattern, bool, bool), MarshalError> {
         if let Some(owned) = self.subtrees.get(&(p as *const Pattern)) {
-            return Ok((owned.0, true));
+            return Ok((owned.0, true, false));
         }
 
         let res = match p {
@@ -82,52 +92,57 @@ impl<H: VarHandler> Marshaller<H> {
                     .as_mut()
                     .ok_or_else(|| MarshalError::UnknownVar(v.id.as_str().into()))?;
                 let sub = handler.substitute(v.id.as_str())?;
-                let (ptr, _) = self.marshal_node(&sub, true)?;
-                Ok((ptr, false))
+                let (ptr, _, fresh) = self.marshal_node(&sub, true)?;
+                Ok((ptr, false, fresh))
             }
 
             Pattern::Dv { sort, value } => {
                 let sort_owned = build_sort(sort)?;
                 let c_val = CString::new(value.0.as_str()).map_err(|_| MarshalError::Cstring)?;
                 let ptr = unsafe { ffi::kore_pattern_new_token(c_val.as_ptr(), sort_owned.0) };
-                Ok((ptr, true))
+                Ok((ptr, true, true))
             }
 
-            Pattern::App(app) => self.marshal_app(p, app),
+            Pattern::App(app) => self.marshal_app(app),
 
             other => Err(MarshalError::Unsupported(variant_name(other))),
         };
 
-        res.inspect(|(ptr, var_free)| {
-            if !was_var && *var_free {
-                self.subtrees
-                    .insert(p as *const Pattern, OwnedPattern(*ptr));
-            }
-        })
+        let (ptr, var_free, mut fresh) = res?;
+        if !was_var && var_free && fresh {
+            self.subtrees
+                .insert(p as *const Pattern, OwnedPattern(ptr));
+            fresh = false;
+        }
+        Ok((ptr, var_free, fresh))
     }
 
     fn marshal_app(
         &mut self,
-        p: &Pattern,
         app: &App,
-    ) -> Result<(*mut ffi::kore_pattern, bool), MarshalError> {
+    ) -> Result<(*mut ffi::kore_pattern, bool, bool), MarshalError> {
         let sym = self.intern_symbol(&app.symbol, &app.sorts)?;
         let pat = unsafe { ffi::kore_composite_pattern_from_symbol(sym) };
 
         let mut var_free = true;
         for arg in &app.args {
-            let (child, child_vf) = self.marshal_node(arg, false)?;
+            let (child, child_vf, child_fresh) = self.marshal_node(arg, false)?;
             unsafe { ffi::kore_composite_pattern_add_argument(pat, child) };
+            // add_argument copied the inner shared_ptr; the underlying AST
+            // is now retained by `pat`. A fresh child wrapper is no longer
+            // needed and must be freed here, otherwise every var-bearing
+            // intermediate node leaks its C wrapper struct each iteration
+            // (which was the dominant slow drip in the earlier MVP).
+            // Borrowed (cached) children must NOT be freed.
+            if child_fresh {
+                unsafe { ffi::kore_pattern_free(child) };
+            }
             var_free &= child_vf;
-            // Do NOT free `child`. If borrowed (cache hit), the cache owns
-            // it. If freshly allocated under a Var-bearing subtree, the C++
-            // side took a shared_ptr copy when add_argument was called, so
-            // `pat`'s eventual free reclaims the AST. The C wrapper struct
-            // around `child` in that latter case is intentionally leaked
-            // (~16 bytes/node, bounded by tree size, not iteration count).
         }
 
-        Ok((pat, var_free))
+        // `pat` is freshly allocated in this call. Caller (or
+        // marshal_node's caching step) decides what to do with it.
+        Ok((pat, var_free, true))
     }
 
     fn intern_symbol(
