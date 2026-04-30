@@ -1,6 +1,6 @@
-use libc;
 use super::ffi;
 use super::{Block, Sort, Symbol};
+use libc;
 use std::ffi::{c_void, CStr, CString, NulError};
 use std::fmt;
 use std::str::FromStr;
@@ -40,9 +40,7 @@ impl Pattern {
     /// is borrowed; the C++ side takes a `shared_ptr` copy of its AST, so
     /// the caller may continue to use or drop `child` afterwards.
     pub fn add_argument(&mut self, child: &Pattern) {
-        unsafe {
-            ffi::kore_composite_pattern_add_argument(self.pattern as *mut _, child.pattern)
-        };
+        unsafe { ffi::kore_composite_pattern_add_argument(self.pattern as *mut _, child.pattern) };
     }
 }
 

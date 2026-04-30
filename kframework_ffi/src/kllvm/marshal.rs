@@ -1,6 +1,6 @@
-use super::ffi;
 use super::{Pattern, Sort, Symbol};
 use kframework::kore;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -14,11 +14,34 @@ pub trait VarHandler {
     fn substitute(&mut self, name: &str) -> Result<kore::Pattern, MarshalError>;
 }
 
+/// Whether this marshalling is allowed to insert into the subtree cache.
+/// `Disabled` propagates downward through Var-substituted subtrees, whose
+/// Patterns live on the caller's stack and would leave dangling pointer
+/// keys if cached.
+#[derive(Clone, Copy)]
+enum Caching {
+    Allowed,
+    Disabled,
+}
+
+/// Result of marshalling one node. Encodes ownership and var-freedom so
+/// callers can determine whether or not to cache it. The lifetime ties
+/// `Cached` to the `&mut self` borrow of the marshaller.
+enum Marshalled<'a> {
+    /// Already in `self.subtrees` (cache hit, or just inserted). Caller
+    /// must NOT free; by construction the source subtree was var-free.
+    Cached(&'a Pattern),
+    /// Freshly built. RAII frees the C wrapper when the `Pattern` drops,
+    /// after the parent's `add_argument` has copied the inner shared_ptr.
+    /// `var_free` reports whether the *source* subtree was Var-free, so
+    /// an ancestor App can decide its own cacheability.
+    Fresh { pattern: Pattern, var_free: bool },
+}
+
 pub struct Marshaller<H: VarHandler> {
-    /// SymbolId string -> Symbol. Each Symbol's underlying C++ AST is held
-    /// alive via `shared_ptr` by every pattern that referenced it during
-    /// construction; dropping the Symbol wrapper here only frees the C
-    /// struct.
+    /// SymbolId string -> Symbol. The underlying C++ symbol is held alive
+    /// via `shared_ptr` by every pattern that referenced it; dropping the
+    /// Symbol wrapper here only frees the C struct.
     symbols: HashMap<String, Symbol>,
     /// `*const kore::Pattern` (pointer identity into the caller-owned
     /// source template) -> Pattern. Only var-free subtrees of the source
@@ -42,110 +65,128 @@ impl<H: VarHandler> Marshaller<H> {
     }
 
     pub fn marshal(&mut self, root: &kore::Pattern) -> Result<Pattern, MarshalError> {
-        let (raw, _var_free, fresh) = self.marshal_node(root, false)?;
-        // If the root resolved to a cached pointer (rare for fuzzer
-        // templates, since they have Vars), transfer ownership out of the
-        // cache so Pattern's Drop is the sole freer.
-        if !fresh {
-            if let Some(owned) = self.subtrees.remove(&(root as *const kore::Pattern)) {
-                std::mem::forget(owned);
-            }
+        // Drop the Marshalled<'_> (and any borrow it holds on self.subtrees)
+        // before mutating the cache.
+        match self.marshal_node(root, Caching::Allowed)? {
+            Marshalled::Fresh { pattern, .. } => return Ok(pattern),
+            Marshalled::Cached(_) => Ok(self
+                .subtrees
+                .remove(&(root as *const kore::Pattern))
+                .expect("Cached root must be present in the cache")),
         }
-        Ok(Pattern::from_raw(raw))
     }
 
-    /// Returns `(ptr, var_free, fresh)`.
-    /// - `fresh = true`  => caller owns the C wrapper and must free it
-    ///   (typically right after handing it to `add_argument`, since the
-    ///   parent already took a `shared_ptr` copy of the underlying AST).
-    /// - `fresh = false` => `ptr` is borrowed (lives in `self.subtrees`).
     fn marshal_node(
         &mut self,
         p: &kore::Pattern,
-        was_var: bool,
-    ) -> Result<(*mut ffi::kore_pattern, bool, bool), MarshalError> {
-        if let Some(cached) = self.subtrees.get(&(p as *const kore::Pattern)) {
-            return Ok((cached.pattern as *mut _, true, false));
+        caching: Caching,
+    ) -> Result<Marshalled<'_>, MarshalError> {
+        // Probe with contains_key (short borrow) so the cache-miss path
+        // doesn't carry an immutable borrow on self.subtrees with the
+        // function's return lifetime — current NLL can't see the
+        // conditional control flow without that.
+        let key = p as *const kore::Pattern;
+        if matches!(caching, Caching::Allowed) && self.subtrees.contains_key(&key) {
+            return Ok(Marshalled::Cached(self.subtrees.get(&key).unwrap()));
         }
-
-        let res = match p {
-            kore::Pattern::Var(v) => {
-                let handler = self
-                    .handler
-                    .as_mut()
-                    .ok_or_else(|| MarshalError::UnknownVar(v.id.as_str().into()))?;
-                let sub = handler.substitute(v.id.as_str())?;
-                let (ptr, _, fresh) = self.marshal_node(&sub, true)?;
-                Ok((ptr, false, fresh))
-            }
-
-            kore::Pattern::Dv { sort, value } => {
-                let s = build_sort(sort)?;
-                let pat =
-                    Pattern::new_token(value.0.as_str(), &s).map_err(|_| MarshalError::Cstring)?;
-                let raw = pat.pattern as *mut _;
-                // Keep tracking the raw pointer manually until the
-                // post-match step decides whether to cache or hand back.
-                std::mem::forget(pat);
-                Ok((raw, true, true))
-            }
-
-            kore::Pattern::App(app) => self.marshal_app(app),
-
-            other => Err(MarshalError::Unsupported(variant_name(other))),
+        let (pattern, var_free) = match p {
+            kore::Pattern::Var(v) => self.marshal_var(v)?,
+            kore::Pattern::Dv { sort, value } => self.marshal_dv(sort, value)?,
+            kore::Pattern::App(app) => self.marshal_app(app, caching)?,
+            other => return Err(MarshalError::Unsupported(variant_name(other))),
         };
+        Ok(self.maybe_cache(p, pattern, var_free, caching))
+    }
 
-        let (ptr, var_free, mut fresh) = res?;
-        if !was_var && var_free && fresh {
-            self.subtrees
-                .insert(p as *const kore::Pattern, Pattern::from_raw(ptr));
-            fresh = false;
-        }
-        Ok((ptr, var_free, fresh))
+    fn marshal_var(&mut self, v: &kore::Var) -> Result<(Pattern, bool), MarshalError> {
+        let handler = self
+            .handler
+            .as_mut()
+            .ok_or_else(|| MarshalError::UnknownVar(v.id.as_str().into()))?;
+        let sub = handler.substitute(v.id.as_str())?;
+        // Caching::Disabled means the recursive call cannot return Cached.
+        let Marshalled::Fresh { pattern, .. } = self.marshal_node(&sub, Caching::Disabled)? else {
+            unreachable!("Caching::Disabled cannot return Cached")
+        };
+        Ok((pattern, false))
+    }
+
+    fn marshal_dv(
+        &mut self,
+        sort: &kore::Sort,
+        value: &kore::Str,
+    ) -> Result<(Pattern, bool), MarshalError> {
+        let s = build_sort(sort)?;
+        let pattern =
+            Pattern::new_token(value.0.as_str(), &s).map_err(|_| MarshalError::Cstring)?;
+        Ok((pattern, true))
     }
 
     fn marshal_app(
         &mut self,
         app: &kore::App,
-    ) -> Result<(*mut ffi::kore_pattern, bool, bool), MarshalError> {
-        let sym_ptr = self.intern_symbol(&app.symbol, &app.sorts)?;
-        let pat = unsafe { ffi::kore_composite_pattern_from_symbol(sym_ptr) };
+        caching: Caching,
+    ) -> Result<(Pattern, bool), MarshalError> {
+        // Borrow of `sym` ends after Pattern::from_symbol consumes it,
+        // freeing self for the recursive marshal_node calls below.
+        let mut pattern = {
+            let sym = self.intern_symbol(&app.symbol, &app.sorts)?;
+            Pattern::from_symbol(sym)
+        };
 
         let mut var_free = true;
         for arg in &app.args {
-            let (child, child_vf, child_fresh) = self.marshal_node(arg, false)?;
-            unsafe { ffi::kore_composite_pattern_add_argument(pat, child) };
-            // add_argument copied the inner shared_ptr; the underlying AST
-            // is now retained by `pat`. A fresh child wrapper is no longer
-            // needed and must be freed here, otherwise every var-bearing
-            // intermediate node leaks its C wrapper struct each iteration.
-            // Borrowed (cached) children must NOT be freed.
-            if child_fresh {
-                unsafe { ffi::kore_pattern_free(child) };
+            match self.marshal_node(arg, caching)? {
+                Marshalled::Cached(child) => pattern.add_argument(child),
+                Marshalled::Fresh {
+                    pattern: child,
+                    var_free: cvf,
+                } => {
+                    pattern.add_argument(&child);
+                    // child drops here -> kore_pattern_free
+                    var_free &= cvf;
+                }
             }
-            var_free &= child_vf;
         }
 
-        Ok((pat, var_free, true))
+        Ok((pattern, var_free))
+    }
+
+    fn maybe_cache(
+        &mut self,
+        p: &kore::Pattern,
+        pattern: Pattern,
+        var_free: bool,
+        caching: Caching,
+    ) -> Marshalled<'_> {
+        if matches!(caching, Caching::Allowed) && var_free {
+            Marshalled::Cached(
+                self.subtrees
+                    .entry(p as *const kore::Pattern)
+                    .or_insert(pattern),
+            )
+        } else {
+            Marshalled::Fresh { pattern, var_free }
+        }
     }
 
     fn intern_symbol(
         &mut self,
         id: &kore::SymbolId,
         sorts: &[kore::Sort],
-    ) -> Result<*mut ffi::kore_symbol, MarshalError> {
+    ) -> Result<&Symbol, MarshalError> {
         let key = id.as_str().to_owned();
-        if let Some(sym) = self.symbols.get(&key) {
-            return Ok(sym.symbol);
-        }
-        let mut sym = Symbol::new(id.as_str()).map_err(|_| MarshalError::Cstring)?;
-        for sort in sorts {
-            let s = build_sort(sort)?;
-            sym.add_formal_argument(&s);
-        }
-        let raw = sym.symbol;
-        self.symbols.insert(key, sym);
-        Ok(raw)
+        Ok(match self.symbols.entry(key) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let mut sym = Symbol::new(id.as_str()).map_err(|_| MarshalError::Cstring)?;
+                for sort in sorts {
+                    let s = build_sort(sort)?;
+                    sym.add_formal_argument(&s);
+                }
+                v.insert(sym)
+            }
+        })
     }
 }
 
