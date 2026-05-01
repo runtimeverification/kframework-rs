@@ -11,7 +11,7 @@ pub enum MarshalError {
 }
 
 pub trait VarHandler {
-    fn substitute(&mut self, name: &str) -> Result<kore::Pattern, MarshalError>;
+    fn substitute(&mut self, name: &str, sort: &kore::Sort) -> Result<kore::Pattern, MarshalError>;
 }
 
 /// Whether this marshalling is allowed to insert into the subtree cache.
@@ -26,7 +26,7 @@ enum Caching {
 
 /// Result of marshalling one node. Encodes ownership and var-freedom so
 /// callers can determine whether or not to cache it. The lifetime ties
-/// `Cached` to the `&mut self` borrow of the marshaller.
+/// `Cached` to the marshaller.
 enum Marshalled<'a> {
     Cached(&'a Pattern),
     Fresh { pattern: Pattern, var_free: bool },
@@ -112,7 +112,7 @@ impl<H: VarHandler> Marshaller<H> {
             .handler
             .as_mut()
             .ok_or_else(|| MarshalError::UnknownVar(v.id.as_str().into()))?;
-        let sub = handler.substitute(v.id.as_str())?;
+        let sub = handler.substitute(v.id.as_str(), &v.sort)?;
         let Marshalled::Fresh { pattern, .. } = self.marshal_node(&sub, Caching::Disabled)? else {
             unreachable!("Caching::Disabled should return Marshalled::Fresh")
         };

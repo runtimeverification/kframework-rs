@@ -38,7 +38,7 @@ Lbl'-LT-'generatedTop'-GT-'{}(
 )"#;
 
 impl VarHandler for FuzzInput {
-    fn substitute(&mut self, name: &str) -> Result<Pattern, MarshalError> {
+    fn substitute(&mut self, name: &str, _sort: &Sort) -> Result<Pattern, MarshalError> {
         let int_sort = Sort::App {
             id: Id::new("SortInt".to_string()).unwrap(),
             args: vec![],
