@@ -81,7 +81,7 @@ impl<H: VarHandler> Marshaller<H> {
         // Drop the Marshalled<'_> (and any borrow it holds on self.subtrees)
         // before mutating the cache.
         match self.marshal_node(root, Caching::Allowed)? {
-            Marshalled::Fresh { pattern, .. } => return Ok(pattern),
+            Marshalled::Fresh { pattern, .. } => Ok(pattern),
             Marshalled::Cached(_) => Ok(self
                 .subtrees
                 .remove(&(root as *const kore::Pattern))

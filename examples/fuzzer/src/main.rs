@@ -99,7 +99,7 @@ fn main() {
                 Pattern::App(App { symbol, args, .. }, ..) => {
                     if symbol == SymbolId::new("Lbl'-LT-'generatedTop'-GT-'".to_string()).unwrap() {
                         let expected = args
-                            .get(0)
+                            .first()
                             .expect("Expected first argument of generatedTop to be present");
                         match expected {
                             Pattern::App(App { symbol, .. }, ..) => {
