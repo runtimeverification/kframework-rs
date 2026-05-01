@@ -28,25 +28,31 @@ enum Caching {
 /// callers can determine whether or not to cache it. The lifetime ties
 /// `Cached` to the `&mut self` borrow of the marshaller.
 enum Marshalled<'a> {
-    /// Already in `self.subtrees` (cache hit, or just inserted). Caller
-    /// must NOT free; by construction the source subtree was var-free.
     Cached(&'a Pattern),
-    /// Freshly built. RAII frees the C wrapper when the `Pattern` drops,
-    /// after the parent's `add_argument` has copied the inner shared_ptr.
-    /// `var_free` reports whether the *source* subtree was Var-free, so
-    /// an ancestor App can decide its own cacheability.
     Fresh { pattern: Pattern, var_free: bool },
 }
 
+/// A marshalling utility for moving a [`kore::Pattern`] over
+/// to an llvm-backend's [`Pattern`]
+///
+/// Optionally uses a [`VarHandler`] to substitute variable terms
+/// in the tree with concrete ones.
+///
+/// It caches any variable-free trees, keyed by the pointer to the
+/// source tree.
+///
+/// This marshaller is good if:
+/// - You have one tree that you want to marshal over once.
+/// - You have a tree with variables that you want to marshal over multiple
+///   times, but with different substitutions for the variables each time
+///   (ie. you're running a fuzzer)
+///
+/// This marshaller is NOT good if:
+/// - You are creating many different trees and want to marshal
+///   over every one of them, and they contain few/no common
+///   subtrees.
 pub struct Marshaller<H: VarHandler> {
-    /// SymbolId string -> Symbol. The underlying C++ symbol is held alive
-    /// via `shared_ptr` by every pattern that referenced it; dropping the
-    /// Symbol wrapper here only frees the C struct.
     symbols: HashMap<String, Symbol>,
-    /// `*const kore::Pattern` (pointer identity into the caller-owned
-    /// source template) -> Pattern. Only var-free subtrees of the source
-    /// template are cached; substituted-Var subtrees live on the stack
-    /// and must not be cached.
     subtrees: HashMap<*const kore::Pattern, Pattern>,
     handler: Option<H>,
 }
@@ -60,10 +66,17 @@ impl<H: VarHandler> Marshaller<H> {
         }
     }
 
+    /// Set the handler for any variable substitutions that need to be
+    /// made. Replaces any pre-existing handler.
     pub fn set_handler(&mut self, h: H) {
         self.handler = Some(h);
     }
 
+    /// Marshal over a [`kore::Pattern`] to the llvm-backend.
+    ///
+    /// Caches variable-free subtrees for repeated uses. The cache is
+    /// keyed by `*const kore::Pattern`, so it is expected that
+    /// structurally equivalent trees are actually the same tree.
     pub fn marshal(&mut self, root: &kore::Pattern) -> Result<Pattern, MarshalError> {
         // Drop the Marshalled<'_> (and any borrow it holds on self.subtrees)
         // before mutating the cache.
@@ -81,10 +94,6 @@ impl<H: VarHandler> Marshaller<H> {
         p: &kore::Pattern,
         caching: Caching,
     ) -> Result<Marshalled<'_>, MarshalError> {
-        // Probe with contains_key (short borrow) so the cache-miss path
-        // doesn't carry an immutable borrow on self.subtrees with the
-        // function's return lifetime — current NLL can't see the
-        // conditional control flow without that.
         let key = p as *const kore::Pattern;
         if matches!(caching, Caching::Allowed) && self.subtrees.contains_key(&key) {
             return Ok(Marshalled::Cached(self.subtrees.get(&key).unwrap()));
@@ -104,9 +113,8 @@ impl<H: VarHandler> Marshaller<H> {
             .as_mut()
             .ok_or_else(|| MarshalError::UnknownVar(v.id.as_str().into()))?;
         let sub = handler.substitute(v.id.as_str())?;
-        // Caching::Disabled means the recursive call cannot return Cached.
         let Marshalled::Fresh { pattern, .. } = self.marshal_node(&sub, Caching::Disabled)? else {
-            unreachable!("Caching::Disabled cannot return Cached")
+            unreachable!("Caching::Disabled should return Marshalled::Fresh")
         };
         Ok((pattern, false))
     }
@@ -127,8 +135,6 @@ impl<H: VarHandler> Marshaller<H> {
         app: &kore::App,
         caching: Caching,
     ) -> Result<(Pattern, bool), MarshalError> {
-        // Borrow of `sym` ends after Pattern::from_symbol consumes it,
-        // freeing self for the recursive marshal_node calls below.
         let mut pattern = {
             let sym = self.intern_symbol(&app.symbol, &app.sorts)?;
             Pattern::from_symbol(sym)
@@ -143,7 +149,6 @@ impl<H: VarHandler> Marshaller<H> {
                     var_free: cvf,
                 } => {
                     pattern.add_argument(&child);
-                    // child drops here -> kore_pattern_free
                     var_free &= cvf;
                 }
             }

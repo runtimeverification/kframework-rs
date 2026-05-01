@@ -3,10 +3,6 @@ use super::Sort;
 use std::ffi::{CString, NulError};
 
 /// Safe wrapper around a `kore_symbol *`. Drops via `kore_symbol_free`.
-///
-/// The underlying C++ symbol is held via a `shared_ptr`; dropping this
-/// wrapper only releases the C struct, so patterns built from this symbol
-/// stay valid for the rest of their lifetime.
 pub struct Symbol {
     pub(crate) symbol: *mut ffi::kore_symbol,
 }

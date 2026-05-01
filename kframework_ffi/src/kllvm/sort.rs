@@ -5,8 +5,7 @@ use std::ffi::{CString, NulError};
 ///
 /// The underlying C++ AST node is held via a `shared_ptr` on the C++ side;
 /// dropping this wrapper only releases the C struct that points to it, so
-/// any patterns or symbols that referenced this sort during construction
-/// remain valid.
+/// any patterns or symbols that reference this sort remain valid.
 pub struct Sort {
     pub(crate) sort: *mut ffi::kore_sort,
 }
