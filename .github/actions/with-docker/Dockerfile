@@ -2,6 +2,8 @@ FROM rust:1.85.0
 
 RUN rustup component add clippy rustfmt
 
+RUN apt-get update && apt-get install --yes libclang-dev
+
 ARG USER=user
 ARG GROUP=$USER
 ARG USER_ID=1000

@@ -10,7 +10,7 @@ RUN kompile --llvm-kompile-type c fuzz.k
 FROM rust:${RUST_TOOLCHAIN}
 
 COPY --from=semantics /opt/imp-semantics/fuzz-kompiled/interpreter.so /usr/lib
-RUN apt-get update && apt-get install --yes build-essential binutils-dev libunwind-dev libblocksruntime-dev liblzma-dev
+RUN apt-get update && apt-get install --yes build-essential binutils-dev libclang-dev libunwind-dev libblocksruntime-dev liblzma-dev
 RUN cargo install honggfuzz
 
 ARG USER=user
