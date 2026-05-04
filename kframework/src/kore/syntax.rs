@@ -27,6 +27,10 @@ impl Id {
     pub fn value(self) -> String {
         self.0
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl TryFrom<String> for Id {
@@ -86,6 +90,10 @@ impl SymbolId {
 
     pub fn value(self) -> String {
         self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
