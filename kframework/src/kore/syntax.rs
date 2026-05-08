@@ -441,10 +441,12 @@ mod tests {
                 let (input, expected) = $value;
 
                 // When
-                let actual = Str::from_kore(input)?.0;
+                let actual = Str::from_kore(input)?;
+                let roundtrip = actual.to_kore();
 
                 // Then
-                assert_eq!(expected, actual);
+                assert_eq!(expected, actual.0);
+                assert_eq!(input.to_lowercase(), roundtrip.to_lowercase());
                 Ok(())
             }
         )*
