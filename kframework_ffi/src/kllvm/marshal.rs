@@ -126,7 +126,7 @@ impl<H: VarHandler> Marshaller<H> {
     ) -> Result<(Pattern, bool), MarshalError> {
         let s = build_sort(sort)?;
         let pattern =
-            Pattern::new_token(value.0.as_str(), &s).map_err(|_| MarshalError::Cstring)?;
+            Pattern::new_token(value.to_kore().as_str(), &s).map_err(|_| MarshalError::Cstring)?;
         Ok((pattern, true))
     }
 
