@@ -210,17 +210,14 @@ fn build_sort(s: &kore::Sort) -> Result<Sort, MarshalError> {
     }
 }
 
-fn build_symbol(
-        id: &kore::SymbolId,
-        sorts: &[kore::Sort],
-    ) -> Result<Symbol, MarshalError> {
-        let mut sym = Symbol::new(id.as_str()).map_err(|_| MarshalError::Cstring)?;
-        for sort in sorts {
-            let s = build_sort(sort)?;
-            sym.add_formal_argument(&s);
-        }
-        Ok(sym)
+fn build_symbol(id: &kore::SymbolId, sorts: &[kore::Sort]) -> Result<Symbol, MarshalError> {
+    let mut sym = Symbol::new(id.as_str()).map_err(|_| MarshalError::Cstring)?;
+    for sort in sorts {
+        let s = build_sort(sort)?;
+        sym.add_formal_argument(&s);
     }
+    Ok(sym)
+}
 
 fn variant_name(p: &kore::Pattern) -> &'static str {
     match p {
