@@ -228,6 +228,32 @@ impl Str {
 
         Ok(Str(chars.into_iter().collect()))
     }
+
+    pub fn to_kore(&self) -> String {
+        let mut out = String::new();
+        for c in self.0.chars() {
+            match c {
+                '"' => out.push_str(r#"\""#),
+                '\\' => out.push_str(r"\\"),
+                '\x0c' => out.push_str(r"\f"),
+                '\n' => out.push_str(r"\n"),
+                '\r' => out.push_str(r"\r"),
+                '\t' => out.push_str(r"\t"),
+                c if (' '..='~').contains(&c) => out.push(c),
+                c => {
+                    let n = c as u32;
+                    if n <= 0xFF {
+                        out.push_str(&format!(r"\x{:02x}", n));
+                    } else if n <= 0xFFFF {
+                        out.push_str(&format!(r"\u{:04x}", n));
+                    } else {
+                        out.push_str(&format!(r"\U{:08x}", n));
+                    }
+                }
+            }
+        }
+        out
+    }
 }
 
 impl<T: Into<String>> From<T> for Str {
@@ -415,10 +441,12 @@ mod tests {
                 let (input, expected) = $value;
 
                 // When
-                let actual = Str::from_kore(input)?.0;
+                let actual = Str::from_kore(input)?;
+                let roundtrip = actual.to_kore();
 
                 // Then
-                assert_eq!(expected, actual);
+                assert_eq!(expected, actual.0);
+                assert_eq!(input.to_lowercase(), roundtrip.to_lowercase());
                 Ok(())
             }
         )*
