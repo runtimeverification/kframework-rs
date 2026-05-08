@@ -136,8 +136,8 @@ impl<H: VarHandler> Marshaller<H> {
         caching: Caching,
     ) -> Result<(Pattern, bool), MarshalError> {
         let mut pattern = {
-            let sym = self.intern_symbol(&app.symbol, &app.sorts)?;
-            Pattern::from_symbol(sym)
+            let sym = build_symbol(&app.symbol, &app.sorts)?;
+            Pattern::from_symbol(&sym)
         };
 
         let mut var_free = true;
@@ -175,6 +175,7 @@ impl<H: VarHandler> Marshaller<H> {
         }
     }
 
+    #[allow(unused)]
     fn intern_symbol(
         &mut self,
         id: &kore::SymbolId,
@@ -208,6 +209,18 @@ fn build_sort(s: &kore::Sort) -> Result<Sort, MarshalError> {
         kore::Sort::Var(_) => Err(MarshalError::Unsupported("Sort::Var")),
     }
 }
+
+fn build_symbol(
+        id: &kore::SymbolId,
+        sorts: &[kore::Sort],
+    ) -> Result<Symbol, MarshalError> {
+        let mut sym = Symbol::new(id.as_str()).map_err(|_| MarshalError::Cstring)?;
+        for sort in sorts {
+            let s = build_sort(sort)?;
+            sym.add_formal_argument(&s);
+        }
+        Ok(sym)
+    }
 
 fn variant_name(p: &kore::Pattern) -> &'static str {
     match p {
