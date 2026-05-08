@@ -1,7 +1,7 @@
 use super::ffi;
 use super::{Block, Sort, Symbol};
 use libc;
-use std::ffi::{c_void, CStr, CString, NulError};
+use std::ffi::{c_void, CStr, CString};
 use std::fmt;
 use std::str::FromStr;
 
@@ -30,9 +30,21 @@ impl Pattern {
     }
 
     /// Build a fresh token (Dv) pattern of the given sort.
-    pub fn new_token(value: &str, sort: &Sort) -> Result<Self, NulError> {
-        let c_val = CString::new(value)?;
-        let raw = unsafe { ffi::kore_pattern_new_token(c_val.as_ptr(), sort.sort) };
+    /// Only supports strings that can be Latin-1 encoded.
+    /// On error, returns the index of the first character outside the Latin-1 range.
+    pub fn new_token(value: &str, sort: &Sort) -> Result<Self, usize> {
+        let bytes = value
+            .chars()
+            .enumerate()
+            .map(|(i, c)| u8::try_from(c as u32).map_err(|_| i))
+            .collect::<Result<Vec<_>, _>>()?;
+        let raw = unsafe {
+            ffi::kore_pattern_new_token_with_len(
+                bytes.as_ptr() as *const std::os::raw::c_char,
+                bytes.len(),
+                sort.sort,
+            )
+        };
         Ok(Self { pattern: raw })
     }
 

@@ -8,6 +8,7 @@ pub enum MarshalError {
     Unsupported(&'static str),
     UnknownVar(String),
     Cstring,
+    InvalidString(String, usize),
 }
 
 pub trait VarHandler {
@@ -125,8 +126,8 @@ impl<H: VarHandler> Marshaller<H> {
         value: &kore::Str,
     ) -> Result<(Pattern, bool), MarshalError> {
         let s = build_sort(sort)?;
-        let pattern =
-            Pattern::new_token(value.to_kore().as_str(), &s).map_err(|_| MarshalError::Cstring)?;
+        let pattern = Pattern::new_token(&value.0, &s)
+            .map_err(|i| MarshalError::InvalidString(value.0.clone(), i))?;
         Ok((pattern, true))
     }
 
