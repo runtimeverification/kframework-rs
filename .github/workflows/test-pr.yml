@@ -8,21 +8,12 @@ concurrency:
 jobs:
   build-and-test:
     name: 'Build and Test Project'
-    runs-on: [self-hosted, linux, normal]
+    runs-on: ubuntu-latest
     steps:
       - name: 'Check out code'
         uses: actions/checkout@v4
-      - name: 'Set up Docker'
-        uses: ./.github/actions/with-docker
-        with:
-          container-name: kframework-rs-${{ github.sha }}
-          dockerfile: Dockerfile
       - name: 'Build and test'
-        run: docker exec -u user kframework-rs-${GITHUB_SHA} make
-      - name: 'Tear down Docker'
-        if: always()
-        run: |
-          docker stop --time=0 kframework-rs-${GITHUB_SHA}
+        run: make
 
   build-ffi-and-fuzz:
     name: 'Build with the FFI and run the fuzzing example'
