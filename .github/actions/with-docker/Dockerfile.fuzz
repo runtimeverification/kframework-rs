@@ -1,5 +1,5 @@
 ARG K_VERSION=7.1.241
-ARG RUST_TOOLCHAIN=1.85.0
+ARG RUST_TOOLCHAIN
 
 FROM runtimeverificationinc/kframework-k:ubuntu-jammy-${K_VERSION} AS semantics
 
