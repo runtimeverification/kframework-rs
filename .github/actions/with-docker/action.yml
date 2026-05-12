@@ -21,9 +21,12 @@ runs:
       TAG=runtimeverificationinc/${CONTAINER_NAME}
       DOCKERFILE=${{ github.action_path }}/${{ inputs.dockerfile }}
 
+      RUST_TOOLCHAIN="$(grep -oP '(?<=channel = ").*(?=")' rust-toolchain.toml)"
+
       docker build .         \
         --file ${DOCKERFILE} \
-        --tag ${TAG}
+        --tag ${TAG}         \
+        --build-arg RUST_TOOLCHAIN="${RUST_TOOLCHAIN}"
 
   - name: 'Run Docker container'
     shell: bash {0}
