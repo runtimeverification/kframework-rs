@@ -31,14 +31,12 @@ impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let result = unsafe {
             let c_str = ffi::kore_block_dump(self.block);
-            let result = CStr::from_ptr(c_str)
-                .to_str()
-                .expect("Failed to convert kllvm::Block to &str")
-                .to_string();
+            let bytes = CStr::from_ptr(c_str).to_bytes();
+            let result: String = bytes.iter().map(|&b| b as char).collect();
             libc::free(c_str as *mut c_void);
             result
         };
-        write!(f, "{}", result)
+        f.write_str(&result)
     }
 }
 
