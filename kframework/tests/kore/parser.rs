@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use kframework::kore::{
     App, Definition, Id, Module, Parser, Pattern, SVar, Sentence, SetVarId, Sort, SymbolId, Var,
 };
@@ -36,7 +38,7 @@ macro_rules! sort_tests {
 
 sort_tests! {
     test_sort_var: ("S", Sort::Var(id("S")?)),
-    test_sort_app: ("SortInt{}", Sort::App { id: id("SortInt")?, args: vec![] }),
+    test_sort_app: ("SortInt{}", Sort::App { id: id("SortInt")?, args: vec![].into() }),
     test_sort_app_with_params: (
         "SortMap{X, Y}",
         Sort::App {
@@ -44,7 +46,7 @@ sort_tests! {
             args: vec![
                 Sort::Var(id("X")?),
                 Sort::Var(id("Y")?),
-            ],
+            ].into_iter().map(Arc::new).collect::<Box<_>>(),
         }
     ),
 }
@@ -132,7 +134,7 @@ pattern_tests! {
     test_pattern_dv: (
         r#"\dv{SortInt{}}("0")"#,
         Pattern::Dv {
-            sort: Sort::App { id: id("SortInt")?, args: vec![] },
+            sort: Sort::App { id: id("SortInt")?, args: vec![].into() },
             value: "0".into(),
         },
     ),
@@ -367,7 +369,7 @@ sentence_tests! {
             vars: vec![id("S")?, id("T")?],
             param_sorts: vec![
                 Sort::Var(id("S")?),
-                Sort::App { id: id("SortInt")?, args: vec![] },
+                Sort::App { id: id("SortInt")?, args: vec![].into() },
             ],
             sort: Sort::Var(id("T")?),
             attrs: vec![],
@@ -381,7 +383,7 @@ sentence_tests! {
             vars: vec![id("S")?, id("T")?],
             param_sorts: vec![
                 Sort::Var(id("S")?),
-                Sort::App { id: id("SortInt")?, args: vec![] },
+                Sort::App { id: id("SortInt")?, args: vec![].into() },
             ],
             sort: Sort::Var(id("T")?),
             attrs: vec![],
@@ -394,7 +396,7 @@ sentence_tests! {
             id: sym(r"\foo")?,
             vars: vec![id("S")?],
             param_sorts: vec![Sort::Var(id("S")?)],
-            sort: Sort::App { id: id("SortBool")?, args: vec![] },
+            sort: Sort::App { id: id("SortBool")?, args: vec![].into() },
             left: App {
                 symbol: sym(r"\foo")?,
                 sorts: vec![Sort::Var(id("S")?)],

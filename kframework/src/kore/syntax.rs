@@ -1,4 +1,7 @@
-#[derive(Debug, PartialEq, Eq)]
+use std::sync::Arc;
+
+#[cfg_attr(feature = "python", pyo3::pyclass(from_py_object))]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Id(pub(crate) String);
 
 impl Id {
@@ -24,8 +27,8 @@ impl Id {
         }
     }
 
-    pub fn value(self) -> String {
-        self.0
+    pub fn value(&self) -> &str {
+        &self.0
     }
 
     pub fn as_str(&self) -> &str {
@@ -338,7 +341,7 @@ pub enum Sentence {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Sort {
     Var(Id),
-    App { id: Id, args: Vec<Sort> },
+    App { id: Id, args: Box<[Arc<Sort>]> },
 }
 
 #[derive(Debug, PartialEq, Eq)]

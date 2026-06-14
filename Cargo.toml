@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+    "bindings/kframework_py",
     "kframework",
     "kframework_ffi",
 ]
@@ -20,3 +21,4 @@ clap = { version = "4.5.20", features = ["derive"] }
 serde = { version = "1.0.214", features = ["derive"] }
 serde_json = "1.0.132"
 indoc = "2.0.5"
+pyo3 = "0.28.0"
