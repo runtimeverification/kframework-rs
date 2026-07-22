@@ -2,6 +2,7 @@ use super::lexer::{Lexer, Token, TokenType};
 use super::{
     App, Definition, Id, Module, Pattern, SVar, Sentence, SetVarId, Sort, Str, SymbolId, Var,
 };
+use crate::error::KError::{self, KoreParseError};
 
 pub struct Parser<'a> {
     #[allow(dead_code)]
@@ -11,14 +12,13 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(text: &'a str) -> Result<Self, String> {
-        // TODO KoreParserError
+    pub fn new(text: &'a str) -> Result<Self, KError> {
         let mut lexer = Lexer::new(text);
         let la = lexer.next_token()?;
         Ok(Self { text, lexer, la })
     }
 
-    pub fn definition(&mut self) -> Result<Definition, String> {
+    pub fn definition(&mut self) -> Result<Definition, KError> {
         let attrs = self.attrs()?;
         let mut modules = Vec::new();
         while self.la.ty() != TokenType::Eof {
@@ -28,7 +28,7 @@ impl<'a> Parser<'a> {
         Ok(Definition { modules, attrs })
     }
 
-    pub fn module(&mut self) -> Result<Module, String> {
+    pub fn module(&mut self) -> Result<Module, KError> {
         self.match_token(TokenType::KwModule)?;
         let id = self.id()?;
         let mut sentences = Vec::new();
@@ -45,7 +45,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn sentence(&mut self) -> Result<Sentence, String> {
+    pub fn sentence(&mut self) -> Result<Sentence, KError> {
         let parse = match self.la.ty() {
             TokenType::KwImport => Self::import,
             TokenType::KwSort => Self::ssort,
@@ -56,16 +56,16 @@ impl<'a> Parser<'a> {
             TokenType::KwAxiom => Self::axiom,
             TokenType::KwClaim => Self::claim,
             _ => {
-                return Err(format!(
+                return Err(KoreParseError(format!(
                     "Expected sentence token, found: {:?}",
                     self.la.ty()
-                ))
+                )))
             }
         };
         parse(self)
     }
 
-    pub fn pattern(&mut self) -> Result<Pattern, String> {
+    pub fn pattern(&mut self) -> Result<Pattern, KError> {
         let parse = match self.la.ty() {
             TokenType::Str => Self::str,
             TokenType::SetVarId => Self::svar,
@@ -91,12 +91,17 @@ impl<'a> Parser<'a> {
             TokenType::MlIn => Self::inn,
             TokenType::MlNext => Self::next,
             TokenType::MlRewrites => Self::rewrites,
-            _ => return Err(format!("Expected pattern token, found: {:?}", self.la.ty())),
+            _ => {
+                return Err(KoreParseError(format!(
+                    "Expected pattern token, found: {:?}",
+                    self.la.ty()
+                )))
+            }
         };
         parse(self)
     }
 
-    pub fn sort(&mut self) -> Result<Sort, String> {
+    pub fn sort(&mut self) -> Result<Sort, KError> {
         let id = self.id()?;
         let sort = if self.la.ty() == TokenType::LBrace {
             let args = self.sorts()?;
@@ -111,7 +116,7 @@ impl<'a> Parser<'a> {
      * Helpers: sentences
      */
 
-    fn import(&mut self) -> Result<Sentence, String> {
+    fn import(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwImport);
         self.consume()?;
         let module = self.id()?;
@@ -119,7 +124,7 @@ impl<'a> Parser<'a> {
         Ok(Sentence::Import { module, attrs })
     }
 
-    fn ssort(&mut self) -> Result<Sentence, String> {
+    fn ssort(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwSort);
         self.consume()?;
         let id = self.id()?;
@@ -133,7 +138,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn hooked_sort(&mut self) -> Result<Sentence, String> {
+    fn hooked_sort(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwHookedSort);
         self.consume()?;
         let id = self.id()?;
@@ -147,7 +152,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn symbol(&mut self) -> Result<Sentence, String> {
+    fn symbol(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwSymbol);
         self.consume()?;
         let id = self.symbol_id()?;
@@ -166,7 +171,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn hooked_symbol(&mut self) -> Result<Sentence, String> {
+    fn hooked_symbol(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwHookedSymbol);
         self.consume()?;
         let id = self.symbol_id()?;
@@ -185,7 +190,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn alias(&mut self) -> Result<Sentence, String> {
+    fn alias(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwAlias);
         self.consume()?;
         let id = self.symbol_id()?;
@@ -209,7 +214,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn axiom(&mut self) -> Result<Sentence, String> {
+    fn axiom(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwAxiom);
         self.consume()?;
         let vars = self.sort_vars()?;
@@ -222,7 +227,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn claim(&mut self) -> Result<Sentence, String> {
+    fn claim(&mut self) -> Result<Sentence, KError> {
         debug_assert!(self.la.ty() == TokenType::KwClaim);
         self.consume()?;
         let vars = self.sort_vars()?;
@@ -239,19 +244,19 @@ impl<'a> Parser<'a> {
      * Helpers: patterns
      */
 
-    fn str(&mut self) -> Result<Pattern, String> {
+    fn str(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::Str);
         let s = self.str_()?;
         Ok(Pattern::Str(s))
     }
 
-    fn svar(&mut self) -> Result<Pattern, String> {
+    fn svar(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::SetVarId);
         let svar = self.svar_()?;
         Ok(Pattern::SVar(svar))
     }
 
-    fn var_or_app(&mut self) -> Result<Pattern, String> {
+    fn var_or_app(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::Id);
         let id = self.id()?;
         if self.la.ty() == TokenType::Colon {
@@ -273,7 +278,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn app(&mut self) -> Result<Pattern, String> {
+    fn app(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::SymbolId);
         let app = self.app_()?;
         Ok(Pattern::App(app))
@@ -281,7 +286,7 @@ impl<'a> Parser<'a> {
 
     // TODO macros
 
-    fn left_assoc(&mut self) -> Result<Pattern, String> {
+    fn left_assoc(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlLeftAssoc);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -292,7 +297,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::LeftAssoc(app))
     }
 
-    fn right_assoc(&mut self) -> Result<Pattern, String> {
+    fn right_assoc(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlRightAssoc);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -303,7 +308,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::RightAssoc(app))
     }
 
-    fn dv(&mut self) -> Result<Pattern, String> {
+    fn dv(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlDv);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -315,7 +320,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::Dv { sort, value })
     }
 
-    fn top(&mut self) -> Result<Pattern, String> {
+    fn top(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlTop);
         self.consume()?;
         // TODO extract helpers for "{" Sort "}" etc.
@@ -327,7 +332,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::Top(sort))
     }
 
-    fn bottom(&mut self) -> Result<Pattern, String> {
+    fn bottom(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlBottom);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -338,7 +343,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::Bottom(sort))
     }
 
-    fn not(&mut self) -> Result<Pattern, String> {
+    fn not(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlNot);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -353,7 +358,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn implies(&mut self) -> Result<Pattern, String> {
+    fn implies(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlImplies);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -371,7 +376,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn iff(&mut self) -> Result<Pattern, String> {
+    fn iff(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlIff);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -389,7 +394,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn and(&mut self) -> Result<Pattern, String> {
+    fn and(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlAnd);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -399,7 +404,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::And { sort, ops })
     }
 
-    fn or(&mut self) -> Result<Pattern, String> {
+    fn or(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlOr);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -409,7 +414,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::Or { sort, ops })
     }
 
-    fn exists(&mut self) -> Result<Pattern, String> {
+    fn exists(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlExists);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -427,7 +432,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn forall(&mut self) -> Result<Pattern, String> {
+    fn forall(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlForall);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -445,7 +450,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn mu(&mut self) -> Result<Pattern, String> {
+    fn mu(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlMu);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -461,7 +466,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn nu(&mut self) -> Result<Pattern, String> {
+    fn nu(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlNu);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -477,7 +482,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn ceil(&mut self) -> Result<Pattern, String> {
+    fn ceil(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlCeil);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -495,7 +500,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn floor(&mut self) -> Result<Pattern, String> {
+    fn floor(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlFloor);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -513,7 +518,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn equals(&mut self) -> Result<Pattern, String> {
+    fn equals(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlEquals);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -534,7 +539,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn inn(&mut self) -> Result<Pattern, String> {
+    fn inn(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlIn);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -555,7 +560,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn next(&mut self) -> Result<Pattern, String> {
+    fn next(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlNext);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -570,7 +575,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn rewrites(&mut self) -> Result<Pattern, String> {
+    fn rewrites(&mut self) -> Result<Pattern, KError> {
         debug_assert!(self.la.ty() == TokenType::MlRewrites);
         self.consume()?;
         self.match_token(TokenType::LBrace)?;
@@ -592,52 +597,52 @@ impl<'a> Parser<'a> {
      * Helpers: misc
      */
 
-    fn id(&mut self) -> Result<Id, String> {
+    fn id(&mut self) -> Result<Id, KError> {
         let s = self.match_token(TokenType::Id)?;
         Ok(Id(String::from(s)))
     }
 
-    fn symbol_id(&mut self) -> Result<SymbolId, String> {
+    fn symbol_id(&mut self) -> Result<SymbolId, KError> {
         match self.la.ty() {
             TokenType::Id | TokenType::SymbolId => {
                 let s = String::from(self.la.text());
                 self.consume()?;
                 Ok(SymbolId(s))
             }
-            _ => Err(format!(
+            _ => Err(KoreParseError(format!(
                 "Expected token {:?} or {:?}, found: {:?}",
                 TokenType::Id,
                 TokenType::SymbolId,
                 self.la.ty()
-            )),
+            ))),
         }
     }
 
-    fn set_var_id(&mut self) -> Result<SetVarId, String> {
+    fn set_var_id(&mut self) -> Result<SetVarId, KError> {
         let s = self.match_token(TokenType::SetVarId)?;
         Ok(SetVarId(String::from(s)))
     }
 
-    fn str_(&mut self) -> Result<Str, String> {
+    fn str_(&mut self) -> Result<Str, KError> {
         let s = self.match_token(TokenType::Str)?;
         Str::from_kore(&s[1..s.len() - 1])
     }
 
-    fn var(&mut self) -> Result<Var, String> {
+    fn var(&mut self) -> Result<Var, KError> {
         let id = self.id()?;
         self.match_token(TokenType::Colon)?;
         let sort = self.sort()?;
         Ok(Var { id, sort })
     }
 
-    fn svar_(&mut self) -> Result<SVar, String> {
+    fn svar_(&mut self) -> Result<SVar, KError> {
         let id = self.set_var_id()?;
         self.match_token(TokenType::Colon)?;
         let sort = self.sort()?;
         Ok(SVar { id, sort })
     }
 
-    fn app_(&mut self) -> Result<App, String> {
+    fn app_(&mut self) -> Result<App, KError> {
         let symbol = self.symbol_id()?;
         let sorts = self.sorts()?;
         let args = self.patterns()?;
@@ -652,7 +657,7 @@ impl<'a> Parser<'a> {
      * Helpers: delimited lists
      */
 
-    fn sort_vars(&mut self) -> Result<Vec<Id>, String> {
+    fn sort_vars(&mut self) -> Result<Vec<Id>, KError> {
         self.delimited_list(
             Self::id,
             TokenType::LBrace,
@@ -661,7 +666,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn attrs(&mut self) -> Result<Vec<App>, String> {
+    fn attrs(&mut self) -> Result<Vec<App>, KError> {
         self.delimited_list(
             Self::app_,
             TokenType::LBrack,
@@ -670,7 +675,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn patterns(&mut self) -> Result<Vec<Pattern>, String> {
+    fn patterns(&mut self) -> Result<Vec<Pattern>, KError> {
         self.delimited_list(
             Self::pattern,
             TokenType::LParen,
@@ -679,7 +684,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn sorts(&mut self) -> Result<Vec<Sort>, String> {
+    fn sorts(&mut self) -> Result<Vec<Sort>, KError> {
         self.delimited_list(
             Self::sort,
             TokenType::LBrace,
@@ -688,7 +693,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn param_sorts(&mut self) -> Result<Vec<Sort>, String> {
+    fn param_sorts(&mut self) -> Result<Vec<Sort>, KError> {
         self.delimited_list(
             Self::sort,
             TokenType::LParen,
@@ -699,11 +704,11 @@ impl<'a> Parser<'a> {
 
     fn delimited_list<T>(
         &mut self,
-        parse: fn(&mut Self) -> Result<T, String>,
+        parse: fn(&mut Self) -> Result<T, KError>,
         ldelim: TokenType,
         rdelim: TokenType,
         sep: TokenType,
-    ) -> Result<Vec<T>, String> {
+    ) -> Result<Vec<T>, KError> {
         self.match_token(ldelim)?;
         let mut elems = Vec::new();
         while self.la.ty() != rdelim {
@@ -722,21 +727,21 @@ impl<'a> Parser<'a> {
      * Helpers: lexer management
      */
 
-    fn match_token(&mut self, expected: TokenType) -> Result<&'a str, String> {
+    fn match_token(&mut self, expected: TokenType) -> Result<&'a str, KError> {
         let actual = self.la.ty();
         if actual == expected {
             let text = self.la.text();
             self.consume()?;
             Ok(text)
         } else {
-            Err(format!(
+            Err(KoreParseError(format!(
                 "Expected token {:?}, found: {:?}",
                 expected, actual,
-            ))
+            )))
         }
     }
 
-    fn consume(&mut self) -> Result<(), String> {
+    fn consume(&mut self) -> Result<(), KError> {
         self.la = self.lexer.next_token()?;
         Ok(())
     }

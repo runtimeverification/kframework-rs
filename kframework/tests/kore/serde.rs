@@ -8,13 +8,13 @@ macro_rules! sort_tests {
 
         $(
             #[test]
-            fn $name() -> Result<(), String> {
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 // Given
                 let (text, expected) = $value;
                 let sort = Parser::new(text)?.sort()?;
 
                 // When
-                let actual = serde_json::to_string_pretty(&sort).map_err(|e| e.to_string())?;
+                let actual = serde_json::to_string_pretty(&sort)?;
 
                 // Then
                 assert_eq!(expected, actual);
@@ -31,13 +31,13 @@ macro_rules! sort_tests {
 
         $(
             #[test]
-            fn $name() -> Result<(), String> {
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 // Given
                 let (text, json) = $value;
                 let expected = Parser::new(text)?.sort()?;
 
                 // When
-                let actual = serde_json::from_str(json).map_err(|e| e.to_string())?;
+                let actual = serde_json::from_str(json)?;
 
                 // Then
                 assert_eq!(expected, actual);
@@ -85,13 +85,13 @@ macro_rules! pattern_tests {
 
         $(
             #[test]
-            fn $name() -> Result<(), String> {
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 // Given
                 let (text, expected) = $value;
                 let sort = Parser::new(text)?.pattern()?;
 
                 // When
-                let actual = serde_json::to_string_pretty(&sort).map_err(|e| e.to_string())?;
+                let actual = serde_json::to_string_pretty(&sort)?;
 
                 // Then
                 assert_eq!(expected, actual);
@@ -107,13 +107,13 @@ macro_rules! pattern_tests {
 
         $(
             #[test]
-            fn $name() -> Result<(), String> {
+            fn $name() -> Result<(), Box<dyn std::error::Error>> {
                 // Given
                 let (text, json) = $value;
                 let expected = Parser::new(text)?.pattern()?;
 
                 // When
-                let actual = serde_json::from_str(json).map_err(|e| e.to_string())?;
+                let actual = serde_json::from_str(json)?;
 
                 // Then
                 assert_eq!(expected, actual);
